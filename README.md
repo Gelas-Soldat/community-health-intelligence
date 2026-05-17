@@ -1,21 +1,3 @@
-<<<<<<< HEAD
-# React + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
-=======
 # Community Health Access BI Dashboard
 
 A business intelligence portfolio project using public CDC, Census, and USDA data to identify counties where health risk, economic vulnerability, and limited food access overlap.
@@ -30,12 +12,12 @@ This project answers a practical BI question:
 
 ## Target Users
 
-| User | Decision They Need To Make |
-|---|---|
-| Public health program manager | Which counties need intervention first? |
-| Grant analyst | Where should funding be directed? |
-| Community outreach team | Which locations need screenings or education campaigns? |
-| Executive stakeholder | What are the top risk areas and why? |
+|User|Decision They Need To Make|
+|-|-|
+|Public health program manager|Which counties need intervention first?|
+|Grant analyst|Where should funding be directed?|
+|Community outreach team|Which locations need screenings or education campaigns?|
+|Executive stakeholder|What are the top risk areas and why?|
 
 ## Use Case
 
@@ -43,11 +25,11 @@ The dashboard gives stakeholders a ranked view of counties by priority score, wi
 
 ## Data Sources
 
-| Source | Dataset | Purpose |
-|---|---|---|
-| CDC | PLACES County Data | County health outcomes, behaviors, and preventive care |
-| Census Bureau | ACS 5 Year Data | Population, poverty, income, insurance, demographics |
-| USDA ERS | Food Access Research Atlas | Low income and low access food indicators |
+|Source|Dataset|Purpose|
+|-|-|-|
+|CDC|PLACES County Data|County health outcomes, behaviors, and preventive care|
+|Census Bureau|ACS 5 Year Data|Population, poverty, income, insurance, demographics|
+|USDA ERS|Food Access Research Atlas|Low income and low access food indicators|
 
 ## Key Business Questions
 
@@ -59,14 +41,14 @@ The dashboard gives stakeholders a ranked view of counties by priority score, wi
 
 ## KPIs
 
-| KPI | Description |
-|---|---|
-| Priority Score | Composite ranking metric combining health, economic, and food access risk |
-| Health Risk Score | Average standardized risk across selected CDC health measures |
-| Economic Risk Score | Poverty, uninsured rate, and income pressure indicators |
-| Food Access Burden | Percent of population in low income, low access areas |
-| Preventive Care Gap | Preventive care measures that fall below benchmark |
-| State Risk Rank | County rank inside each state using window functions |
+|KPI|Description|
+|-|-|
+|Priority Score|Composite ranking metric combining health, economic, and food access risk|
+|Health Risk Score|Average standardized risk across selected CDC health measures|
+|Economic Risk Score|Poverty, uninsured rate, and income pressure indicators|
+|Food Access Burden|Percent of population in low income, low access areas|
+|Preventive Care Gap|Preventive care measures that fall below benchmark|
+|State Risk Rank|County rank inside each state using window functions|
 
 ## Technical Skills Demonstrated
 
@@ -95,17 +77,17 @@ community-health-access-bi/
     schema.sql
     indexes.sql
     views.sql
-    stored_procedures.sql
+    stored\_procedures.sql
   etl/
-    load_cdc_places.py
-    load_census_acs.py
-    load_food_access.py
-    clean_transform.py
+    load\_cdc\_places.py
+    load\_census\_acs.py
+    load\_food\_access.py
+    clean\_transform.py
   sql/
-    beginner_queries.sql
-    intermediate_queries.sql
-    advanced_queries.sql
-    performance_tuning.sql
+    beginner\_queries.sql
+    intermediate\_queries.sql
+    advanced\_queries.sql
+    performance\_tuning.sql
   frontend/
     src/
       App.jsx
@@ -114,9 +96,9 @@ community-health-access-bi/
     package.json
     index.html
   docs/
-    data_dictionary.md
-    project_plan.md
-    interview_talking_points.md
+    data\_dictionary.md
+    project\_plan.md
+    interview\_talking\_points.md
   data/
     raw/
     processed/
@@ -125,4 +107,6 @@ community-health-access-bi/
 ## Portfolio Summary
 
 Community Health Access BI Dashboard is a real world analyst project that combines CDC health estimates, Census socioeconomic indicators, and USDA food access data to identify counties with the greatest need for public health outreach. The project demonstrates practical SQL, BI thinking, stakeholder focused KPI design, relational modeling, data cleaning, and dashboard development.
+
 >>>>>>> cb37a9a545c9f6a1ac8b61664dcd4f75798acfac
+
