@@ -1,97 +1,233 @@
-import React, { useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ScatterChart, Scatter, CartesianGrid } from 'recharts';
-import { Activity, Database, MapPinned, TrendingUp } from 'lucide-react';
-import { counties, driverData } from './data.js';
+import "./style.css";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ScatterChart,
+  Scatter,
+  CartesianGrid,
+  ResponsiveContainer
+} from "recharts";
+
+import { countyData } from "./data";
 
 export default function App() {
-  const [stateFilter, setStateFilter] = useState('All');
-  const states = ['All', ...new Set(counties.map((d) => d.state))];
-  const filtered = useMemo(() => stateFilter === 'All' ? counties : counties.filter((d) => d.state === stateFilter), [stateFilter]);
-  const avgPriority = Math.round(filtered.reduce((sum, d) => sum + d.priority, 0) / filtered.length);
+  const avgScore = Math.round(
+    countyData.reduce((a, b) => a + b.priority, 0) /
+      countyData.length
+  );
+
+  const criticalCounties = countyData.filter(
+    x => x.tier === "Critical"
+  ).length;
+
+  const states = [...new Set(countyData.map(x => x.state))];
 
   return (
-    <main className="page">
+    <div className="container">
+
       <section className="hero">
+
         <div>
-          <p className="eyebrow">Business Intelligence Portfolio Project</p>
-          <h1>Community Health Access Dashboard</h1>
-          <p className="lede">A stakeholder focused BI dashboard that identifies counties where health risk, poverty, uninsured rates, and food access barriers overlap.</p>
+
+          <div className="eyebrow">
+            BUSINESS INTELLIGENCE PORTFOLIO PROJECT
+          </div>
+
+          <h1>
+            Community Health Access Dashboard
+          </h1>
+
+          <p className="hero-text">
+            Built to identify counties where health risk,
+            economic vulnerability, and access barriers
+            overlap, helping public health teams prioritize
+            limited intervention resources.
+          </p>
+
+          <div className="source-badges">
+            <span>CDC PLACES</span>
+            <span>Census ACS</span>
+            <span>USDA Food Access Atlas</span>
+          </div>
+
         </div>
-        <div className="heroCard">
-          <Database size={28} />
-          <strong>PostgreSQL + CDC + Census + USDA</strong>
-          <span>Built for county level prioritization and executive reporting.</span>
+
+        <div className="card summary-card">
+
+          <h3>
+            PostgreSQL + CDC + Census + USDA
+          </h3>
+
+          <p>
+            Built for county prioritization,
+            executive reporting, and public
+            health planning.
+          </p>
+
         </div>
+
       </section>
 
-      <section className="problem">
+
+      <section className="card">
+
         <h2>Business Problem</h2>
-        <p>Public health teams need a practical way to decide where limited outreach dollars should go first. This dashboard turns scattered public datasets into a ranked, evidence based county priority list.</p>
+
+        <p>
+          Public health agencies often operate with limited
+          outreach resources and fragmented datasets.
+          This dashboard combines health, economic,
+          and food access indicators into a ranked
+          county prioritization framework.
+        </p>
+
       </section>
 
-      <section className="cards">
-        <Metric icon={<TrendingUp />} label="Avg Priority Score" value={avgPriority} />
-        <Metric icon={<Activity />} label="Critical Counties" value={filtered.filter((d) => d.tier === 'Critical').length} />
-        <Metric icon={<MapPinned />} label="States in Scope" value={new Set(filtered.map((d) => d.state)).size} />
+
+      <section className="stakeholders">
+
+        <div className="card">
+          <h3>Primary Stakeholders</h3>
+
+          <ul>
+            <li>Public Health Agencies</li>
+            <li>County Leadership Teams</li>
+            <li>Policy Analysts</li>
+            <li>Community Outreach Teams</li>
+          </ul>
+
+        </div>
+
+        <div className="card">
+          <h3>Scoring Methodology</h3>
+
+          <p>
+            Priority Score calculation:
+          </p>
+
+          <ul>
+            <li>40% Health Risk</li>
+            <li>35% Economic Vulnerability</li>
+            <li>25% Food Access Burden</li>
+          </ul>
+
+        </div>
+
       </section>
 
-      <section className="toolbar">
-        <label>Filter by state</label>
-        <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
-          {states.map((s) => <option key={s}>{s}</option>)}
-        </select>
+
+      <section className="metrics">
+
+        <div className="metric-card">
+          <small>High Risk Index</small>
+          <h2>{avgScore}</h2>
+        </div>
+
+        <div className="metric-card">
+          <small>Priority Counties</small>
+          <h2>{criticalCounties}</h2>
+        </div>
+
+        <div className="metric-card">
+          <small>Coverage Area</small>
+          <h2>{states.length}</h2>
+        </div>
+
       </section>
 
-      <section className="grid">
-        <div className="panel">
-          <h2>Top Counties by Priority Score</h2>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={filtered}>
-              <XAxis dataKey="county" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="priority" />
+
+      <section className="charts">
+
+        <div className="card">
+
+          <h2>
+            Top Counties by Priority Score
+          </h2>
+
+          <ResponsiveContainer
+            width="100%"
+            height={300}
+          >
+            <BarChart data={countyData}>
+              <XAxis dataKey="county"/>
+              <YAxis/>
+              <Tooltip/>
+              <Bar dataKey="priority"/>
             </BarChart>
           </ResponsiveContainer>
+
         </div>
-        <div className="panel">
-          <h2>Poverty vs Health Risk</h2>
-          <ResponsiveContainer width="100%" height={280}>
+
+        <div className="card">
+
+          <h2>
+            Poverty vs Health Risk
+          </h2>
+
+          <ResponsiveContainer
+            width="100%"
+            height={300}
+          >
             <ScatterChart>
               <CartesianGrid />
-              <XAxis dataKey="poverty" name="Poverty" />
-              <YAxis dataKey="health" name="Health Risk" />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-              <Scatter data={filtered} />
+              <XAxis dataKey="economic"/>
+              <YAxis dataKey="health"/>
+              <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+              <Scatter data={countyData}/>
             </ScatterChart>
           </ResponsiveContainer>
+
         </div>
+
       </section>
 
-      <section className="panel">
-        <h2>County Priority Table</h2>
-        <table>
-          <thead>
-            <tr><th>County</th><th>State</th><th>Priority</th><th>Health</th><th>Economic</th><th>Food</th><th>Tier</th></tr>
-          </thead>
-          <tbody>
-            {filtered.map((row) => (
-              <tr key={`${row.county}-${row.state}`}>
-                <td>{row.county}</td><td>{row.state}</td><td>{row.priority}</td><td>{row.health}</td><td>{row.economic}</td><td>{row.food}</td><td><span className="pill">{row.tier}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      <section className="card">
+
+        <h2>
+          SQL Techniques Demonstrated
+        </h2>
+
+        <div className="skills-grid">
+
+          <span>Complex Joins</span>
+          <span>CTEs</span>
+          <span>Window Functions</span>
+          <span>Views</span>
+          <span>Indexes</span>
+          <span>Subqueries</span>
+          <span>Performance Optimization</span>
+          <span>KPI Modeling</span>
+
+        </div>
+
       </section>
 
-      <section className="panel note">
-        <h2>Analyst Interpretation</h2>
-        <p>The counties at the top of the list are not simply places with one bad metric. They show multiple overlapping risk drivers, which makes them stronger candidates for targeted outreach, grant review, and community planning.</p>
+
+      <section className="card">
+
+        <h2>
+          Analyst Interpretation
+        </h2>
+
+        <p>
+          Counties with overlapping health,
+          economic, and food access risks
+          represent stronger candidates for
+          targeted outreach, intervention
+          planning, and funding prioritization.
+        </p>
+
       </section>
-    </main>
+      <footer className="footer">
+  <p>
+    Built by Ryan as a Business Intelligence portfolio project using
+    SQL, public datasets, and dashboard reporting.
+  </p>
+</footer>
+    </div>
   );
-}
-
-function Metric({ icon, label, value }) {
-  return <div className="metric"><div>{icon}</div><span>{label}</span><strong>{value}</strong></div>;
 }
