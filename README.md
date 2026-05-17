@@ -2,6 +2,20 @@
 
 A business intelligence portfolio project using public CDC, Census, and USDA data to identify counties where health risk, economic vulnerability, and limited food access overlap.
 
+## Dashboard Preview
+
+### Full Dashboard
+
+![Dashboard Overview](docs/screenshots/dashboard-overview.png)
+
+### KPI and Analytics View
+
+![KPI Charts](docs/screenshots/kpi-and-charts.png)
+
+### SQL Techniques Section
+
+![SQL Section](docs/screenshots/sql-techniques.png)
+
 ## Business Problem
 
 Public agencies, nonprofit health networks, and community planning teams often need to decide where limited outreach dollars should go first. The issue is not just one metric. A county may have high diabetes risk, high poverty, limited preventive care, and poor food access at the same time.
