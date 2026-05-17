@@ -121,6 +121,3 @@ community-health-access-bi/
 ## Portfolio Summary
 
 Community Health Access BI Dashboard is a real world analyst project that combines CDC health estimates, Census socioeconomic indicators, and USDA food access data to identify counties with the greatest need for public health outreach. The project demonstrates practical SQL, BI thinking, stakeholder focused KPI design, relational modeling, data cleaning, and dashboard development.
-
->>>>>>> cb37a9a545c9f6a1ac8b61664dcd4f75798acfac
-
