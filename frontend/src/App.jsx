@@ -385,11 +385,27 @@ export default function App() {
       </div>
 
       <footer className="footer">
-        <p>
-          Community Health Intelligence · Built by Ryan ·
-          Data: CDC PLACES, US Census Bureau, USDA ERS · 2023
-        </p>
-      </footer>
+  <p>
+    Community Health Intelligence · Built by{" "}
+    <a href="https://github.com/Gelas-Soldat" target="_blank" rel="noopener noreferrer"
+      style={{ color: "#3b82f6", textDecoration: "none" }}>Ryan</a>
+    {" "}· Data: CDC PLACES, US Census Bureau, USDA ERS · 2023
+  </p>
+  <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12 }}>
+    <a href="https://buymeacoffee.com/ryancreates" target="_blank" rel="noopener noreferrer"
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFDD00", color: "#000", fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 20, textDecoration: "none" }}>
+      ☕ Buy Me a Coffee
+    </a>
+    <a href="https://ko-fi.com/gelassoldat" target="_blank" rel="noopener noreferrer"
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FF5E5B", color: "#fff", fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 20, textDecoration: "none" }}>
+      ❤️ Ko-fi
+    </a>
+    <a href="https://github.com/Gelas-Soldat" target="_blank" rel="noopener noreferrer"
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#24292e", color: "#fff", fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 20, textDecoration: "none" }}>
+      ⭐ GitHub
+    </a>
+  </div>
+</footer>
 
     </div>
   );
