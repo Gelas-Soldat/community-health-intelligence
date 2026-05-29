@@ -252,12 +252,13 @@ export default function App() {
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>County</th>
-                  <th>St</th>
-                  <th onClick={() => handleSort("priority_score")}>Score{sortArrow("priority_score")}</th>
-                  <th onClick={() => handleSort("health_risk_score")}>Health{sortArrow("health_risk_score")}</th>
-                  <th onClick={() => handleSort("economic_risk_score")}>Econ{sortArrow("economic_risk_score")}</th>
-                  <th>Tier</th>
+<th>County</th>
+<th>St</th>
+<th onClick={() => handleSort("priority_score")}>Score{sortArrow("priority_score")}</th>
+<th onClick={() => handleSort("health_risk_score")}>Health{sortArrow("health_risk_score")}</th>
+<th onClick={() => handleSort("economic_risk_score")}>Econ{sortArrow("economic_risk_score")}</th>
+<th onClick={() => handleSort("food_access_burden")}>Food{sortArrow("food_access_burden")}</th>
+<th>Tier</th>
                 </tr>
               </thead>
               <tbody>
@@ -270,8 +271,9 @@ export default function App() {
                     <td style={{ color: "var(--muted2)", fontSize: 11 }}>{c.state_abbr}</td>
                     <td><span className="score-num">{c.priority_score}</span></td>
                     <td><ScoreBar value={c.health_risk_score}   color="#3b82f6" /></td>
-                    <td><ScoreBar value={c.economic_risk_score} color="#f97316" /></td>
-                    <td><TierBadge tier={c.risk_tier} /></td>
+<td><ScoreBar value={c.economic_risk_score} color="#f97316" /></td>
+<td><ScoreBar value={c.food_access_burden}  color="#22c55e" /></td>
+<td><TierBadge tier={c.risk_tier} /></td>
                   </tr>
                 ))}
               </tbody>
