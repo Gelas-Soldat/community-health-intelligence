@@ -1,11 +1,5 @@
 const { Client } = require("pg");
 
-const OUTCOME_IDS = ['DIABETES','OBESITY','BPHIGH','CHD','COPD','CANCER','CASTHMA','STROKE','MHLTH','PHLTH'];
-const CARE_IDS    = ['CHECKUP','DENTAL','MAMMOUSE','CERVICAL','CHOLSCREEN'];
-
-// Normalize a value to 0-100 given min/max
-const norm = (v, min, max) => max === min ? 0 : Math.round(((v - min) / (max - min)) * 100 * 100) / 100;
-
 exports.handler = async (event) => {
   const headers = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
   const client  = new Client({ connectionString: process.env.DATABASE_URL });
@@ -13,120 +7,127 @@ exports.handler = async (event) => {
   try {
     await client.connect();
 
-    // Resolve year
     const reqYear = event.queryStringParameters?.year ? parseInt(event.queryStringParameters.year) : null;
     const yrRes   = await client.query(
       reqYear ? "SELECT $1::int AS year" : "SELECT MAX(year) AS year FROM fact_health_measures",
       reqYear ? [reqYear] : []
     );
-    const year = yrRes.rows[0].year;
+    const year = parseInt(yrRes.rows[0].year);
 
-    // Fetch all data in parallel
-    const allIds  = [...OUTCOME_IDS, ...CARE_IDS].map(id => `'${id}'`).join(',');
-    const [hmRes, cpRes, faRes, dcRes] = await Promise.all([
-      // Health measures — one row per county per measure
-      client.query(`SELECT county_fips, measure_id, value FROM fact_health_measures WHERE year = ${year} AND measure_id IN (${allIds})`),
-      // Census profile
-      client.query(`SELECT county_fips, poverty_rate, uninsured_rate, median_household_income FROM fact_census_profile WHERE year = ${year}`),
-      // Food access — aggregate to county
-      client.query(`SELECT county_fips, SUM(low_income_low_access_population)::float / NULLIF(SUM(tract_population),0) * 100 AS food_pct FROM fact_food_access GROUP BY county_fips`),
-      // Counties
-      client.query(`SELECT county_fips, county_name, state_abbr, state_name FROM dim_county`),
-    ]);
+    // All scoring done in SQL — cast to numeric explicitly to avoid double precision ROUND error
+    const sql = `
+      WITH
 
-    // Build health score per county in JS
-    // Group measures by county
-    const measuresByCounty = {};
-    for (const row of hmRes.rows) {
-      if (!measuresByCounty[row.county_fips]) measuresByCounty[row.county_fips] = {};
-      measuresByCounty[row.county_fips][row.measure_id] = parseFloat(row.value);
-    }
+      -- Average health outcome measures per county (higher = worse)
+      health_outcome AS (
+        SELECT county_fips,
+          AVG(value)::numeric AS outcome_avg
+        FROM fact_health_measures
+        WHERE year = ${year}
+          AND measure_id IN ('DIABETES','OBESITY','BPHIGH','CHD','COPD','CANCER','CASTHMA','STROKE','MHLTH','PHLTH')
+        GROUP BY county_fips
+      ),
 
-    // Compute avg outcome and avg care per county
-    const healthRaw = {};
-    for (const [fips, measures] of Object.entries(measuresByCounty)) {
-      const outcomeVals = OUTCOME_IDS.map(id => measures[id]).filter(v => v != null);
-      const careVals    = CARE_IDS.map(id => measures[id]).filter(v => v != null);
-      healthRaw[fips] = {
-        outcome: outcomeVals.length ? outcomeVals.reduce((a,b) => a+b, 0) / outcomeVals.length : null,
-        care:    careVals.length    ? careVals.reduce((a,b) => a+b, 0)    / careVals.length    : null,
-      };
-    }
+      -- Average preventive care measures per county (higher = better)
+      health_care AS (
+        SELECT county_fips,
+          AVG(value)::numeric AS care_avg
+        FROM fact_health_measures
+        WHERE year = ${year}
+          AND measure_id IN ('CHECKUP','DENTAL','MAMMOUSE','CERVICAL','CHOLSCREEN')
+        GROUP BY county_fips
+      ),
 
-    // Compute census lookup
-    const censusMap = {};
-    for (const row of cpRes.rows) {
-      censusMap[row.county_fips] = {
-        poverty:  parseFloat(row.poverty_rate)            || 0,
-        uninsured:parseFloat(row.uninsured_rate)          || 0,
-        income:   parseFloat(row.median_household_income) || 0,
-      };
-    }
+      -- Normalize health outcome to 0-100 (higher = worse)
+      health_scored AS (
+        SELECT h.county_fips,
+          CASE WHEN MAX(h.outcome_avg) OVER () = MIN(h.outcome_avg) OVER () THEN 0
+               ELSE 100::numeric * (h.outcome_avg - MIN(h.outcome_avg) OVER ())
+                    / (MAX(h.outcome_avg) OVER () - MIN(h.outcome_avg) OVER ())
+          END AS health_risk_score,
+          CASE WHEN MAX(c.care_avg) OVER () = MIN(c.care_avg) OVER () THEN 0
+               ELSE 100::numeric * (1 - (c.care_avg - MIN(c.care_avg) OVER ())
+                    / (MAX(c.care_avg) OVER () - MIN(c.care_avg) OVER ()))
+          END AS preventive_care_gap
+        FROM health_outcome h
+        LEFT JOIN health_care c USING (county_fips)
+      ),
 
-    // Compute food lookup
-    const foodMap = {};
-    for (const row of faRes.rows) {
-      foodMap[row.county_fips] = parseFloat(row.food_pct) || 0;
-    }
+      -- Normalize census economic indicators
+      econ_scored AS (
+        SELECT e.county_fips,
+          (
+            50::numeric * CASE WHEN MAX(e.poverty_rate) OVER () = MIN(e.poverty_rate) OVER () THEN 0
+              ELSE (e.poverty_rate - MIN(e.poverty_rate) OVER ()) / (MAX(e.poverty_rate) OVER () - MIN(e.poverty_rate) OVER ()) END
+            +
+            30::numeric * CASE WHEN MAX(e.uninsured_rate) OVER () = MIN(e.uninsured_rate) OVER () THEN 0
+              ELSE (e.uninsured_rate - MIN(e.uninsured_rate) OVER ()) / (MAX(e.uninsured_rate) OVER () - MIN(e.uninsured_rate) OVER ()) END
+            +
+            20::numeric * CASE WHEN MAX(e.median_household_income) OVER () = MIN(e.median_household_income) OVER () THEN 0
+              ELSE 1 - (e.median_household_income - MIN(e.median_household_income) OVER ()) / (MAX(e.median_household_income) OVER () - MIN(e.median_household_income) OVER ()) END
+          ) AS economic_risk_score
+        FROM fact_census_profile e
+        WHERE year = ${year}
+      ),
 
-    // Compute global min/max for normalization
-    const outcomes  = Object.values(healthRaw).map(h => h.outcome).filter(v => v != null);
-    const cares     = Object.values(healthRaw).map(h => h.care).filter(v => v != null);
-    const poverties = cpRes.rows.map(r => parseFloat(r.poverty_rate)).filter(v => !isNaN(v));
-    const unins     = cpRes.rows.map(r => parseFloat(r.uninsured_rate)).filter(v => !isNaN(v));
-    const incomes   = cpRes.rows.map(r => parseFloat(r.median_household_income)).filter(v => !isNaN(v));
-    const foods     = faRes.rows.map(r => parseFloat(r.food_pct)).filter(v => !isNaN(v));
+      -- Food access burden per county
+      food_raw AS (
+        SELECT county_fips,
+          SUM(low_income_low_access_population)::numeric
+            / NULLIF(SUM(tract_population), 0)::numeric * 100 AS food_pct
+        FROM fact_food_access
+        GROUP BY county_fips
+      ),
+      food_scored AS (
+        SELECT county_fips,
+          CASE WHEN MAX(food_pct) OVER () = MIN(food_pct) OVER () THEN 0
+               ELSE 100::numeric * (food_pct - MIN(food_pct) OVER ())
+                    / (MAX(food_pct) OVER () - MIN(food_pct) OVER ())
+          END AS food_access_burden
+        FROM food_raw
+      )
 
-    const minMax = (arr) => ({
-  min: arr.reduce((a, b) => Math.min(a, b), Infinity),
-  max: arr.reduce((a, b) => Math.max(a, b), -Infinity),
-});
-    const outMM  = minMax(outcomes);
-    const careMM = minMax(cares);
-    const povMM  = minMax(poverties);
-    const insMM  = minMax(unins);
-    const incMM  = minMax(incomes);
-    const foodMM = minMax(foods);
+      -- Join everything
+      SELECT
+        d.county_fips,
+        d.county_name,
+        d.state_abbr,
+        d.state_name,
+        COALESCE(hs.health_risk_score,   0)::float AS health_risk_score,
+        COALESCE(hs.preventive_care_gap, 0)::float AS preventive_care_gap,
+        COALESCE(es.economic_risk_score, 0)::float AS economic_risk_score,
+        COALESCE(fs.food_access_burden,  0)::float AS food_access_burden
+      FROM dim_county d
+      LEFT JOIN health_scored hs USING (county_fips)
+      LEFT JOIN econ_scored   es USING (county_fips)
+      LEFT JOIN food_scored   fs USING (county_fips)
+    `;
 
-    // Build results
+    const res = await client.query(sql);
+
     const results = [];
-    for (const county of dcRes.rows) {
-      const fips = county.county_fips;
-      const h = healthRaw[fips];
-      const c = censusMap[fips];
-      const f = foodMap[fips];
+    for (const row of res.rows) {
+      const h = parseFloat(row.health_risk_score)   || 0;
+      const e = parseFloat(row.economic_risk_score) || 0;
+      const f = parseFloat(row.food_access_burden)  || 0;
+      const c = parseFloat(row.preventive_care_gap) || 0;
 
-      if (!h && !c && f == null) continue;
+      if (h === 0 && e === 0 && f === 0) continue;
 
-      // Health risk: higher outcome avg = worse = higher score
-      const healthScore = h?.outcome != null ? norm(h.outcome, outMM.min, outMM.max) : 0;
-      // Care gap: lower care avg = worse = higher gap score (inverted)
-      const careGap     = h?.care != null ? norm(careMM.max - h.care + careMM.min, careMM.min, careMM.max) : 0;
-      // Economic risk
-      const econScore   = c ? (
-        0.50 * norm(c.poverty,   povMM.min, povMM.max) +
-        0.30 * norm(c.uninsured, insMM.min, insMM.max) +
-        0.20 * norm(incMM.max - c.income + incMM.min, incMM.min, incMM.max)
-      ) : 0;
-      // Food burden
-      const foodScore = f != null ? norm(f, foodMM.min, foodMM.max) : 0;
-
-      if (healthScore === 0 && econScore === 0 && foodScore === 0) continue;
-
-      const priority = Math.round((healthScore * 0.40) + (econScore * 0.35) + (foodScore * 0.25));
+      const priority = Math.round((h * 0.40) + (e * 0.35) + (f * 0.25));
       const tier = priority >= 75 ? "HIGH" : priority >= 50 ? "ELEVATED" : priority >= 25 ? "MODERATE" : "LOW";
 
       results.push({
-        county_fips:         fips,
-        county_name:         county.county_name,
-        state_abbr:          county.state_abbr,
-        state_name:          county.state_name,
+        county_fips:         row.county_fips,
+        county_name:         row.county_name,
+        state_abbr:          row.state_abbr,
+        state_name:          row.state_name,
         data_year:           year,
         priority_score:      priority,
-        health_risk_score:   Math.round(healthScore * 100) / 100,
-        economic_risk_score: Math.round(econScore   * 100) / 100,
-        food_access_burden:  Math.round(foodScore   * 100) / 100,
-        preventive_care_gap: Math.round(careGap     * 100) / 100,
+        health_risk_score:   Math.round(h * 100) / 100,
+        economic_risk_score: Math.round(e * 100) / 100,
+        food_access_burden:  Math.round(f * 100) / 100,
+        preventive_care_gap: Math.round(c * 100) / 100,
         risk_tier:           tier,
       });
     }
