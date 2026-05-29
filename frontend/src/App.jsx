@@ -606,6 +606,24 @@ LEFT JOIN food_scored   fs USING (county_fips)`}
             ⭐ GitHub
           </a>
         </div>
+        <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 11, color: "var(--muted2)", lineHeight: 1.8, maxWidth: 720, margin: "24px auto 0" }}>
+          <p style={{ marginBottom: 8 }}>
+            <strong style={{ color: "var(--muted)" }}>Disclaimer:</strong> This dashboard is for informational purposes only. 
+            Data is sourced from CDC PLACES, the US Census Bureau, and the USDA Economic Research Service — all publicly available federal datasets. 
+            Scores and rankings are analytical interpretations and should not be used as the sole basis for medical, policy, or funding decisions. 
+            Always consult official sources and qualified professionals.
+          </p>
+          <p style={{ marginBottom: 8 }}>
+            <strong style={{ color: "var(--muted)" }}>Privacy:</strong> This site uses Simple Analytics, a privacy-first analytics tool. 
+            No cookies are set, no personal data is collected, and no data is sold to third parties. 
+            Your visit is counted but never tracked.
+          </p>
+          <p>
+            <strong style={{ color: "var(--muted)" }}>Copyright:</strong> © {new Date().getFullYear()} Ryan (Gelas-Soldat). 
+            The dashboard design, scoring methodology, and source code are original works licensed under MIT. 
+            Underlying data belongs to their respective federal agencies.
+          </p>
+        </div>
       </footer>
 
     </div>
