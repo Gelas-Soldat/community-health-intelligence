@@ -12,18 +12,21 @@ import {
 } from "recharts";
 
 import { countyData } from "./data";
+import CountyMap from "./components/CountyMap";
 
 export default function App() {
   const avgScore = Math.round(
-    countyData.reduce((a, b) => a + b.priority, 0) /
+    countyData.reduce((a, b) => a + b.priority_score, 0) /
       countyData.length
   );
 
   const criticalCounties = countyData.filter(
-    x => x.tier === "Critical"
+    x => x.risk_tier === "HIGH"
   ).length;
 
-  const states = [...new Set(countyData.map(x => x.state))];
+  const states = [...new Set(countyData.map(x => x.state_abbr))];
+
+  const availableYears = [...new Set(countyData.map(x => x.data_year))].sort();
 
   return (
     <div className="container">
@@ -139,6 +142,21 @@ export default function App() {
       </section>
 
 
+      <section className="card">
+
+        <h2>County Risk Map</h2>
+
+        <div style={{ height: "600px" }}>
+          <CountyMap
+            countyData={countyData}
+            availableYears={availableYears}
+            onCountyClick={(fips, name) => console.log("Selected:", fips, name)}
+          />
+        </div>
+
+      </section>
+
+
       <section className="charts">
 
         <div className="card">
@@ -152,10 +170,10 @@ export default function App() {
             height={300}
           >
             <BarChart data={countyData}>
-              <XAxis dataKey="county"/>
+              <XAxis dataKey="county_name"/>
               <YAxis/>
               <Tooltip/>
-              <Bar dataKey="priority"/>
+              <Bar dataKey="priority_score"/>
             </BarChart>
           </ResponsiveContainer>
 
@@ -173,8 +191,8 @@ export default function App() {
           >
             <ScatterChart>
               <CartesianGrid />
-              <XAxis dataKey="economic"/>
-              <YAxis dataKey="health"/>
+              <XAxis dataKey="economic_risk_score"/>
+              <YAxis dataKey="health_risk_score"/>
               <Tooltip cursor={{ strokeDasharray: "3 3" }} />
               <Scatter data={countyData}/>
             </ScatterChart>
@@ -222,12 +240,14 @@ export default function App() {
         </p>
 
       </section>
+
       <footer className="footer">
-  <p>
-    Built by Ryan as a Business Intelligence portfolio project using
-    SQL, public datasets, and dashboard reporting.
-  </p>
-</footer>
+        <p>
+          Built by Ryan as a Business Intelligence portfolio project using
+          SQL, public datasets, and dashboard reporting.
+        </p>
+      </footer>
+
     </div>
   );
 }
