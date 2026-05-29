@@ -1,14 +1,12 @@
 const { Client } = require("pg");
 
-const HEALTH_MEASURES = [
-  "DIABETES", "OBESITY", "BPHIGH", "CHD", "COPD",
-  "CANCER", "CASTHMA", "STROKE", "MHLTH", "PHLTH",
-];
-const CARE_MEASURES = [
-  "CHECKUP", "DENTAL", "MAMMOUSE", "CERVICAL", "CHOLSCREEN",
-];
+const r2  = (v) => Math.round(v * 100) / 100;
+const n   = (v) => { const f = parseFloat(v); return isNaN(f) ? 0 : f; };
 
-const r2 = (v) => v === null || v === undefined ? null : Math.round(v * 100) / 100;
+// Inlined directly into SQL to avoid pg array parameter issues
+const OUTCOME_IDS  = `'DIABETES','OBESITY','BPHIGH','CHD','COPD','CANCER','CASTHMA','STROKE','MHLTH','PHLTH'`;
+const CARE_IDS     = `'CHECKUP','DENTAL','MAMMOUSE','CERVICAL','CHOLSCREEN'`;
+const ALL_IDS      = `${OUTCOME_IDS},${CARE_IDS}`;
 
 exports.handler = async (event) => {
   const headers = {
@@ -37,28 +35,28 @@ exports.handler = async (event) => {
       WITH health_raw AS (
         SELECT
           county_fips,
-          AVG(CASE WHEN measure_id = ANY($1) THEN value END) AS outcome_avg,
-          AVG(CASE WHEN measure_id = ANY($2) THEN value END) AS care_avg
+          AVG(CASE WHEN measure_id IN (${OUTCOME_IDS}) THEN value END) AS outcome_avg,
+          AVG(CASE WHEN measure_id IN (${CARE_IDS})    THEN value END) AS care_avg
         FROM fact_health_measures
-        WHERE year = $3 AND measure_id = ANY($4)
+        WHERE year = ${year} AND measure_id IN (${ALL_IDS})
         GROUP BY county_fips
       ),
       mm AS (
         SELECT MIN(outcome_avg) out_min, MAX(outcome_avg) out_max,
-               MIN(care_avg) care_min, MAX(care_avg) care_max
+               MIN(care_avg)   care_min, MAX(care_avg)   care_max
         FROM health_raw
       )
       SELECT
         h.county_fips,
         100.0 * (h.outcome_avg - m.out_min) / NULLIF(m.out_max - m.out_min, 0) AS health_risk_score,
-        100.0 * (1 - (h.care_avg - m.care_min) / NULLIF(m.care_max - m.care_min, 0))  AS preventive_care_gap
+        100.0 * (1 - (h.care_avg - m.care_min) / NULLIF(m.care_max - m.care_min, 0)) AS preventive_care_gap
       FROM health_raw h CROSS JOIN mm m
     `;
 
     const economicSQL = `
       WITH econ_raw AS (
         SELECT county_fips, poverty_rate, uninsured_rate, median_household_income
-        FROM fact_census_profile WHERE year = $1
+        FROM fact_census_profile WHERE year = ${year}
       ),
       mm AS (
         SELECT MIN(poverty_rate) pov_min, MAX(poverty_rate) pov_max,
@@ -68,7 +66,7 @@ exports.handler = async (event) => {
       )
       SELECT
         e.county_fips,
-        50.0 * (e.poverty_rate - m.pov_min) / NULLIF(m.pov_max - m.pov_min, 0)
+        50.0 * (e.poverty_rate   - m.pov_min) / NULLIF(m.pov_max - m.pov_min, 0)
         + 30.0 * (e.uninsured_rate - m.ins_min) / NULLIF(m.ins_max - m.ins_min, 0)
         + 20.0 * (1 - (e.median_household_income - m.inc_min) / NULLIF(m.inc_max - m.inc_min, 0))
         AS economic_risk_score
@@ -89,18 +87,15 @@ exports.handler = async (event) => {
     `;
 
     const [healthRes, economicRes, foodRes, countyRes] = await Promise.all([
-      client.query(healthSQL, [
-        HEALTH_MEASURES, CARE_MEASURES, year,
-        [...HEALTH_MEASURES, ...CARE_MEASURES],
-      ]),
-      client.query(economicSQL, [year]),
+      client.query(healthSQL),
+      client.query(economicSQL),
       client.query(foodSQL),
       client.query("SELECT county_fips, county_name, state_abbr, state_name FROM dim_county"),
     ]);
 
-    const healthMap   = Object.fromEntries(healthRes.rows.map(r => [r.county_fips, r]));
+    const healthMap   = Object.fromEntries(healthRes.rows.map(r  => [r.county_fips, r]));
     const economicMap = Object.fromEntries(economicRes.rows.map(r => [r.county_fips, r]));
-    const foodMap     = Object.fromEntries(foodRes.rows.map(r => [r.county_fips, r]));
+    const foodMap     = Object.fromEntries(foodRes.rows.map(r    => [r.county_fips, r]));
 
     const results = [];
 
@@ -112,19 +107,16 @@ exports.handler = async (event) => {
 
       if (!h && !e && !f) continue;
 
-      const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+      const healthScore   = r2(n(h?.health_risk_score));
+      const economicScore = r2(n(e?.economic_risk_score));
+      const foodScore     = r2(n(f?.food_access_burden));
+      const careGap       = r2(n(h?.preventive_care_gap));
 
-const healthScore   = r2(toNum(h?.health_risk_score));
-const economicScore = r2(toNum(e?.economic_risk_score));
-const foodScore     = r2(toNum(f?.food_access_burden));
-const careGap       = r2(toNum(h?.preventive_care_gap));
+      if (healthScore === 0 && economicScore === 0 && foodScore === 0) continue;
 
-// Skip counties with no data at all
-if (healthScore === 0 && economicScore === 0 && foodScore === 0) continue;
-
-const priority = Math.round(
-  (healthScore * 0.40) + (economicScore * 0.35) + (foodScore * 0.25)
-);
+      const priority = Math.round(
+        (healthScore * 0.40) + (economicScore * 0.35) + (foodScore * 0.25)
+      );
 
       const tier =
         priority >= 75 ? "HIGH"     :
