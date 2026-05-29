@@ -67,29 +67,28 @@ def load_cdc_places(conn, year):
     df = _download(CDC_PLACES_URLS[year])
     log.info(f"  Raw rows: {len(df):,} — filtering to county CrudePrev...")
 
-    # Filter to crude prevalence only
     df = df[df["DataValueTypeID"] == CRUDE_PREV_TYPE].copy()
-
-    # Filter to measures we care about
     df = df[df["MeasureId"].isin(MEASURE_WHITELIST)].copy()
 
-    # LocationID is the county FIPS
     df["county_fips"] = df["LocationID"].astype(str).str.zfill(5)
     df = df[df["county_fips"].str.match(r"^\d{5}$")].copy()
     df = df.dropna(subset=["county_fips"])
+
+    # Coerce numerics — drop rows where Data_Value is NaN or non-numeric
+    df["Data_Value"]            = pd.to_numeric(df["Data_Value"],            errors="coerce")
+    df["Low_Confidence_Limit"]  = pd.to_numeric(df["Low_Confidence_Limit"],  errors="coerce")
+    df["High_Confidence_Limit"] = pd.to_numeric(df["High_Confidence_Limit"], errors="coerce")
+
+    # Drop rows with no valid value — prevents NaN from entering Postgres
+    df = df.dropna(subset=["Data_Value"])
 
     log.info(f"  After filter: {len(df):,} rows, "
              f"{df['county_fips'].nunique():,} counties, "
              f"{df['MeasureId'].nunique()} measures")
 
-    # Coerce numerics
-    df["Data_Value"]            = pd.to_numeric(df["Data_Value"],            errors="coerce")
-    df["Low_Confidence_Limit"]  = pd.to_numeric(df["Low_Confidence_Limit"],  errors="coerce")
-    df["High_Confidence_Limit"] = pd.to_numeric(df["High_Confidence_Limit"], errors="coerce")
-
     with conn.cursor() as cur:
 
-        # --- dim_county ---
+        # dim_county
         county_df = df[["county_fips", "LocationName", "StateAbbr", "StateDesc"]]\
                       .drop_duplicates("county_fips")
         county_records = [
@@ -108,7 +107,7 @@ def load_cdc_places(conn, year):
         """, county_records, page_size=500)
         log.info(f"  dim_county: {len(county_records):,} rows upserted")
 
-        # --- dim_health_measure ---
+        # dim_health_measure
         measure_df = df[["MeasureId", "Measure", "Category"]].drop_duplicates("MeasureId")
         measure_records = [
             (row.MeasureId, row.Measure, row.Category,
@@ -126,7 +125,7 @@ def load_cdc_places(conn, year):
         """, measure_records, page_size=100)
         log.info(f"  dim_health_measure: {len(measure_records)} measures upserted")
 
-        # --- fact_health_measures ---
+        # fact_health_measures
         fact_records = [
             (row.county_fips, row.MeasureId, year,
              row.Data_Value, row.Low_Confidence_Limit, row.High_Confidence_Limit)
