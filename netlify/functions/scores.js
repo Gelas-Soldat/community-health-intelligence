@@ -112,14 +112,19 @@ exports.handler = async (event) => {
 
       if (!h && !e && !f) continue;
 
-      const healthScore   = r2(parseFloat(h?.health_risk_score   ?? 0));
-      const economicScore = r2(parseFloat(e?.economic_risk_score ?? 0));
-      const foodScore     = r2(parseFloat(f?.food_access_burden  ?? 0));
-      const careGap       = r2(parseFloat(h?.preventive_care_gap ?? 0));
+      const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 
-      const priority = Math.round(
-        (healthScore * 0.40) + (economicScore * 0.35) + (foodScore * 0.25)
-      );
+const healthScore   = r2(toNum(h?.health_risk_score));
+const economicScore = r2(toNum(e?.economic_risk_score));
+const foodScore     = r2(toNum(f?.food_access_burden));
+const careGap       = r2(toNum(h?.preventive_care_gap));
+
+// Skip counties with no data at all
+if (healthScore === 0 && economicScore === 0 && foodScore === 0) continue;
+
+const priority = Math.round(
+  (healthScore * 0.40) + (economicScore * 0.35) + (foodScore * 0.25)
+);
 
       const tier =
         priority >= 75 ? "HIGH"     :
