@@ -1,17 +1,10 @@
 """
 load_cdc_places.py — CDC PLACES County Health Data Loader
-Updated for time-series schema (data_year column)
-
-CDC PLACES releases one national CSV per year covering all ~3,000+ counties.
-Source: https://data.cdc.gov/500-Cities-Places/PLACES-Local-Data-for-Better-Health-County-Data-20/swc5-untb/about_data
-
-The download URL pattern changes with each release. Update CDC_PLACES_URLS
-as new years become available.
+Matches actual schema: dim_county, dim_health_measure, fact_health_measures
 """
 
 import io
 import logging
-import os
 
 import pandas as pd
 import psycopg2
@@ -21,114 +14,135 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# CDC PLACES Socrata API download URLs by year
-# To get a new one: go to the dataset page, click Export → CSV → copy the URL
-# ---------------------------------------------------------------------------
-CDC_PLACES_URLS: dict[int, str] = {
+CDC_PLACES_URLS = {
     2020: "https://data.cdc.gov/api/views/duw2-7jbt/rows.csv?accessType=DOWNLOAD",
     2021: "https://data.cdc.gov/api/views/swc5-untb/rows.csv?accessType=DOWNLOAD",
     2022: "https://data.cdc.gov/api/views/swc5-untb/rows.csv?accessType=DOWNLOAD",
     2023: "https://data.cdc.gov/api/views/swc5-untb/rows.csv?accessType=DOWNLOAD",
-    # Add new years here as CDC releases them
 }
 
-# Columns we care about — map CSV column name → DB column name
-COLUMN_MAP: dict[str, str] = {
-    "CountyFIPS":         "county_fips",
-    "StateAbbr":          "state_abbr",
-    "StateDesc":          "state_name",
-    "CountyName":         "county_name",
-    # Health outcomes
-    "DIABETES_CrudePrev": "diabetes_pct",
-    "OBESITY_CrudePrev":  "obesity_pct",
-    "BPHIGH_CrudePrev":   "hypertension_pct",
-    "CHD_CrudePrev":      "coronary_heart_disease_pct",
-    "COPD_CrudePrev":     "copd_pct",
-    "CANCER_CrudePrev":   "cancer_pct",
-    "CASTHMA_CrudePrev":  "asthma_pct",
-    "STROKE_CrudePrev":   "stroke_pct",
-    "MHLTH_CrudePrev":    "mental_health_poor_pct",
-    "PHLTH_CrudePrev":    "physical_health_poor_pct",
-    # Preventive care
-    "CHECKUP_CrudePrev":   "annual_checkup_pct",
-    "DENTAL_CrudePrev":    "dental_visit_pct",
-    "MAMMOUSE_CrudePrev":  "mammography_pct",
-    "CERVICAL_CrudePrev":  "cervical_screening_pct",
-    "CHOLSCREEN_CrudePrev":"cholesterol_screening_pct",
-    # Behaviors
-    "CSMOKING_CrudePrev":  "smoking_pct",
-    "LPA_CrudePrev":       "no_leisure_activity_pct",
-    "SLEEP_CrudePrev":     "sleep_insufficient_pct",
+CRUDE_PREV_TYPE = "CrdPrv"
+
+MEASURE_WHITELIST = {
+    "DIABETES", "OBESITY", "BPHIGH", "CHD", "COPD", "CANCER",
+    "CASTHMA", "STROKE", "MHLTH", "PHLTH",
+    "CHECKUP", "DENTAL", "MAMMOUSE", "CERVICAL", "CHOLSCREEN",
+    "CSMOKING", "LPA", "SLEEP",
+}
+
+MEASURE_DIRECTION = {
+    "DIABETES":   "higher_is_worse",
+    "OBESITY":    "higher_is_worse",
+    "BPHIGH":     "higher_is_worse",
+    "CHD":        "higher_is_worse",
+    "COPD":       "higher_is_worse",
+    "CANCER":     "higher_is_worse",
+    "CASTHMA":    "higher_is_worse",
+    "STROKE":     "higher_is_worse",
+    "MHLTH":      "higher_is_worse",
+    "PHLTH":      "higher_is_worse",
+    "CHECKUP":    "higher_is_better",
+    "DENTAL":     "higher_is_better",
+    "MAMMOUSE":   "higher_is_better",
+    "CERVICAL":   "higher_is_better",
+    "CHOLSCREEN": "higher_is_better",
+    "CSMOKING":   "higher_is_worse",
+    "LPA":        "higher_is_worse",
+    "SLEEP":      "higher_is_worse",
 }
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-def _download_csv(url: str) -> pd.DataFrame:
-    log.info(f"  Downloading CDC PLACES CSV...")
-    resp = requests.get(url, timeout=120)
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=15))
+def _download(url):
+    log.info("  Downloading CDC PLACES CSV...")
+    resp = requests.get(url, timeout=180)
     resp.raise_for_status()
     return pd.read_csv(io.StringIO(resp.text), dtype=str)
 
 
-def load_cdc_places(conn, year: int) -> int:
-    """
-    Download and load CDC PLACES county data for the given year.
-    Returns the number of rows inserted/updated.
-    """
+def load_cdc_places(conn, year):
     if year not in CDC_PLACES_URLS:
-        available = sorted(CDC_PLACES_URLS.keys())
-        raise ValueError(
-            f"No CDC PLACES URL configured for {year}. "
-            f"Available years: {available}. "
-            f"Add the download URL to CDC_PLACES_URLS in load_cdc_places.py."
-        )
+        raise ValueError(f"No URL configured for year {year}.")
 
-    df = _download_csv(CDC_PLACES_URLS[year])
+    df = _download(CDC_PLACES_URLS[year])
+    log.info(f"  Raw rows: {len(df):,} — filtering to county CrudePrev...")
 
-    # Keep only county-level rows (PLACES also has census tract data)
-    if "GeographicLevel" in df.columns:
-        df = df[df["GeographicLevel"] == "County"].copy()
+    # Filter to crude prevalence only
+    df = df[df["DataValueTypeID"] == CRUDE_PREV_TYPE].copy()
 
-    # Rename columns to DB names
-    df = df.rename(columns=COLUMN_MAP)
-    db_cols = list(COLUMN_MAP.values())
-    available_cols = [c for c in db_cols if c in df.columns]
-    df = df[available_cols].copy()
+    # Filter to measures we care about
+    df = df[df["MeasureId"].isin(MEASURE_WHITELIST)].copy()
 
-    # Clean county_fips — ensure 5-char zero-padded string
-    df["county_fips"] = df["county_fips"].astype(str).str.zfill(5)
-
-    # Convert numeric columns
-    numeric_cols = [c for c in available_cols
-                    if c not in ("county_fips", "state_abbr", "state_name", "county_name")]
-    for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    df["data_year"] = year
+    # LocationID is the county FIPS
+    df["county_fips"] = df["LocationID"].astype(str).str.zfill(5)
+    df = df[df["county_fips"].str.match(r"^\d{5}$")].copy()
     df = df.dropna(subset=["county_fips"])
 
-    # Build upsert SQL
-    cols = df.columns.tolist()
-    placeholders = ", ".join(["%s"] * len(cols))
-    col_names    = ", ".join(cols)
-    updates      = ", ".join(
-        f"{c} = EXCLUDED.{c}"
-        for c in cols
-        if c not in ("county_fips", "data_year")
-    )
+    log.info(f"  After filter: {len(df):,} rows, "
+             f"{df['county_fips'].nunique():,} counties, "
+             f"{df['MeasureId'].nunique()} measures")
 
-    sql = f"""
-        INSERT INTO cdc_health_data ({col_names})
-        VALUES ({placeholders})
-        ON CONFLICT (county_fips, data_year) DO UPDATE SET {updates}
-    """
-
-    records = [tuple(row) for row in df.itertuples(index=False, name=None)]
+    # Coerce numerics
+    df["Data_Value"]            = pd.to_numeric(df["Data_Value"],            errors="coerce")
+    df["Low_Confidence_Limit"]  = pd.to_numeric(df["Low_Confidence_Limit"],  errors="coerce")
+    df["High_Confidence_Limit"] = pd.to_numeric(df["High_Confidence_Limit"], errors="coerce")
 
     with conn.cursor() as cur:
-        psycopg2.extras.execute_batch(cur, sql, records, page_size=500)
-    conn.commit()
 
-    log.info(f"  CDC PLACES {year}: {len(records):,} counties upserted")
-    return len(records)
+        # --- dim_county ---
+        county_df = df[["county_fips", "LocationName", "StateAbbr", "StateDesc"]]\
+                      .drop_duplicates("county_fips")
+        county_records = [
+            (row.county_fips, row.LocationName,
+             row.county_fips[:2], row.StateDesc, row.StateAbbr)
+            for row in county_df.itertuples()
+        ]
+        psycopg2.extras.execute_batch(cur, """
+            INSERT INTO dim_county
+                (county_fips, county_name, state_fips, state_name, state_abbr)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (county_fips) DO UPDATE SET
+                county_name = EXCLUDED.county_name,
+                state_name  = EXCLUDED.state_name,
+                state_abbr  = EXCLUDED.state_abbr
+        """, county_records, page_size=500)
+        log.info(f"  dim_county: {len(county_records):,} rows upserted")
+
+        # --- dim_health_measure ---
+        measure_df = df[["MeasureId", "Measure", "Category"]].drop_duplicates("MeasureId")
+        measure_records = [
+            (row.MeasureId, row.Measure, row.Category,
+             MEASURE_DIRECTION.get(row.MeasureId, "higher_is_worse"))
+            for row in measure_df.itertuples()
+        ]
+        psycopg2.extras.execute_batch(cur, """
+            INSERT INTO dim_health_measure
+                (measure_id, measure_name, category, direction)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (measure_id) DO UPDATE SET
+                measure_name = EXCLUDED.measure_name,
+                category     = EXCLUDED.category,
+                direction    = EXCLUDED.direction
+        """, measure_records, page_size=100)
+        log.info(f"  dim_health_measure: {len(measure_records)} measures upserted")
+
+        # --- fact_health_measures ---
+        fact_records = [
+            (row.county_fips, row.MeasureId, year,
+             row.Data_Value, row.Low_Confidence_Limit, row.High_Confidence_Limit)
+            for row in df.itertuples()
+        ]
+        psycopg2.extras.execute_batch(cur, """
+            INSERT INTO fact_health_measures
+                (county_fips, measure_id, year, value,
+                 low_confidence, high_confidence)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (county_fips, measure_id, year) DO UPDATE SET
+                value           = EXCLUDED.value,
+                low_confidence  = EXCLUDED.low_confidence,
+                high_confidence = EXCLUDED.high_confidence
+        """, fact_records, page_size=1000)
+
+    conn.commit()
+    log.info(f"  CDC PLACES {year}: {len(fact_records):,} fact rows upserted")
+    return len(fact_records)
