@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import "./style.css";
 import {
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, BarChart, Bar
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  ScatterChart, Scatter, CartesianGrid,
 } from "recharts";
 import { fetchScores, fetchYears, countyData as fallbackData } from "./data";
 import CountyMap from "./components/CountyMap";
 
+// Valid US states + DC (filters out territories)
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN",
   "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH",
@@ -14,594 +15,288 @@ const US_STATES = new Set([
   "VT","VA","WA","WV","WI","WY"
 ]);
 
-const TIER_CONFIG = {
-  HIGH:     { color: "#ef4444", bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.3)"  },
-  ELEVATED: { color: "#f97316", bg: "rgba(249,115,22,0.12)", border: "rgba(249,115,22,0.3)" },
-  MODERATE: { color: "#eab308", bg: "rgba(234,179,8,0.12)",  border: "rgba(234,179,8,0.3)"  },
-  LOW:      { color: "#22c55e", bg: "rgba(34,197,94,0.12)",  border: "rgba(34,197,94,0.3)"  },
+const TIER_COLORS = {
+  HIGH:     "#dc2626",
+  ELEVATED: "#ea580c",
+  MODERATE: "#ca8a04",
+  LOW:      "#16a34a",
 };
 
-function useCounter(target, duration = 1200) {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    if (!target) return;
-    const start = Date.now();
-    const tick = () => {
-      const elapsed = Date.now() - start;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setVal(Math.round(eased * target));
-      if (progress < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [target, duration]);
-  return val;
+function StatCard({ label, value, loading, accent }) {
+  return (
+    <div className="metric-card" style={{ "--accent-color": accent }}>
+      <small>{label}</small>
+      <h2 className={loading ? "loading-pulse" : ""}>{loading ? "—" : value}</h2>
+    </div>
+  );
 }
 
 function TierBadge({ tier }) {
-  const cfg = TIER_CONFIG[tier] || TIER_CONFIG.LOW;
   return (
-    <span className="tier-badge" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+    <span style={{
+      display: "inline-block",
+      padding: "2px 10px",
+      borderRadius: "20px",
+      fontSize: "11px",
+      fontWeight: 600,
+      background: `${TIER_COLORS[tier]}18`,
+      color: TIER_COLORS[tier],
+      border: `1px solid ${TIER_COLORS[tier]}40`,
+    }}>
       {tier}
     </span>
   );
 }
 
-function ScoreBar({ value, color }) {
-  return (
-    <div className="score-bar-wrap">
-      <div className="score-bar-bg">
-        <div className="score-bar-fill" style={{ width: `${Math.min(value, 100)}%`, background: color }} />
-      </div>
-      <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 28, textAlign: "right" }}>{value.toFixed(0)}</span>
-    </div>
-  );
-}
-
-function KpiCard({ label, value, sub, accent = "#3b82f6", loading }) {
-  const animated = useCounter(loading ? 0 : value);
-  return (
-    <div className="kpi-card" style={{ "--kpi-color": accent }}>
-      <div className="kpi-label">{label}</div>
-      <div className={`kpi-value ${loading ? "loading" : ""}`}>
-        {loading ? "—" : animated.toLocaleString()}
-      </div>
-      {sub && <div className="kpi-sub">{sub}</div>}
-    </div>
-  );
-}
-
-const DarkTooltip = ({ active, payload }) => {
+const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
-  const d = payload[0]?.payload;
   return (
-    <div style={{ background: "#0d1117", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
-      <div style={{ fontWeight: 600, color: "#f0f4f8", marginBottom: 4 }}>{d?.county_name}, {d?.state_abbr}</div>
-      <div style={{ color: "#7a8ba0" }}>Health: <span style={{ color: "#f0f4f8" }}>{d?.health_risk_score?.toFixed(1)}</span></div>
-      <div style={{ color: "#7a8ba0" }}>Economic: <span style={{ color: "#f0f4f8" }}>{d?.economic_risk_score?.toFixed(1)}</span></div>
-      <div style={{ color: "#7a8ba0", marginTop: 4 }}><TierBadge tier={d?.risk_tier} /></div>
+    <div style={{
+      background: "#0f172a", border: "1px solid #334155",
+      borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#e2e8f0"
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      {payload.map(p => (
+        <div key={p.name} style={{ color: "#94a3b8" }}>
+          {p.name}: <span style={{ color: "#fff" }}>{typeof p.value === "number" ? p.value.toFixed(1) : p.value}</span>
+        </div>
+      ))}
     </div>
   );
 };
-
-const LinkCard = ({ name, desc, url }) => (
-  <a href={url} target="_blank" rel="noopener noreferrer"
-    style={{ display: "block", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", textDecoration: "none", transition: "border-color 0.2s" }}
-    onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(59,130,246,0.4)"}
-    onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"}
-  >
-    <div style={{ fontSize: 12, fontWeight: 600, color: "#3b82f6", marginBottom: 3 }}>{name} →</div>
-    <div style={{ fontSize: 11, color: "var(--muted2)" }}>{desc}</div>
-  </a>
-);
 
 export default function App() {
   const [countyData,     setCountyData]     = useState(fallbackData);
   const [availableYears, setAvailableYears] = useState([2023]);
   const [loading,        setLoading]        = useState(true);
-  const [activeTab,      setActiveTab]      = useState("community");
-  const [search,         setSearch]         = useState("");
-  const [stateFilter,    setStateFilter]    = useState("ALL");
-  const [sortBy,         setSortBy]         = useState("priority_score");
-  const [sortDir,        setSortDir]        = useState("desc");
+  const [error,          setError]          = useState(null);
 
   useEffect(() => {
-    fetchYears().then(setAvailableYears).catch(() => {});
-    fetchScores()
-      .then(data => { setCountyData(data); setLoading(false); })
-      .catch(() => setLoading(false));
+    fetchYears()
+      .then(years => setAvailableYears(years))
+      .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchScores()
+      .then(data => { setCountyData(data); setLoading(false); })
+      .catch(err  => { setError(err.message); setLoading(false); });
+  }, []);
+
+  // Filter to US states only
   const usData = countyData.filter(c => US_STATES.has(c.state_abbr));
 
-  const avgScore    = usData.length ? Math.round(usData.reduce((a, b) => a + b.priority_score, 0) / usData.length) : 0;
-  const highRisk    = usData.filter(c => c.risk_tier === "HIGH").length;
-  const stateCount  = new Set(usData.map(c => c.state_abbr)).size;
-  const countyCount = usData.length;
-
-  const tierCounts = { HIGH: 0, ELEVATED: 0, MODERATE: 0, LOW: 0 };
-  usData.forEach(c => { if (tierCounts[c.risk_tier] !== undefined) tierCounts[c.risk_tier]++; });
-
-  const stateOptions = ["ALL", ...Array.from(new Set(usData.map(c => c.state_abbr))).sort()];
-
-  const tableData = usData
-    .filter(c => {
-      const matchSearch = search === "" ||
-        c.county_name?.toLowerCase().includes(search.toLowerCase()) ||
-        c.state_abbr?.toLowerCase().includes(search.toLowerCase());
-      const matchState = stateFilter === "ALL" || c.state_abbr === stateFilter;
-      return matchSearch && matchState;
-    })
-    .sort((a, b) => (a[sortBy] - b[sortBy]) * (sortDir === "desc" ? -1 : 1))
-    .slice(0, 50);
-
-  const handleSort = (col) => {
-    if (sortBy === col) setSortDir(d => d === "desc" ? "asc" : "desc");
-    else { setSortBy(col); setSortDir("desc"); }
-  };
-
-  const sortArrow = (col) => sortBy === col ? (sortDir === "desc" ? " ↓" : " ↑") : "";
-
-  const topCounties = [...usData].sort((a, b) => b.priority_score - a.priority_score).slice(0, 10);
-
-  const tabs = [
-    { id: "community", label: "🗺 Community View",  desc: "For residents, advocates & planners" },
-    { id: "technical", label: "⚙ Technical View",   desc: "For hiring managers & developers"   },
-  ];
+  // KPIs
+  const avgScore      = usData.length ? Math.round(usData.reduce((a, b) => a + b.priority_score, 0) / usData.length) : 0;
+  const highRisk      = usData.filter(c => c.risk_tier === "HIGH").length;
+  const stateCount    = new Set(usData.map(c => c.state_abbr)).size;
+  const topCounties   = [...usData].sort((a, b) => b.priority_score - a.priority_score).slice(0, 10);
 
   return (
-    <div className="page">
-
+    <>
       {/* ── Hero ── */}
-      <header className="hero">
-        <div>
-          <div className="hero-eyebrow">Public Health Analytics · Business Intelligence Portfolio</div>
-          <h1>Where should <span>public health</span><br />dollars go first?</h1>
-          <p className="hero-sub">
-            This dashboard combines CDC disease data, Census poverty estimates, and USDA food
-            access records to rank every US county by combined health risk — giving planners
-            a clear, data-driven answer to that question.
+      <div className="hero-wrapper">
+        <section className="hero">
+          <div>
+            <div className="eyebrow">Business Intelligence Portfolio Project</div>
+            <h1>Community Health<br />Access Dashboard</h1>
+            <p className="hero-text">
+              Identifying counties where health risk, economic vulnerability, and
+              food access barriers overlap — helping public health teams prioritize
+              limited outreach resources across the United States.
+            </p>
+            <div className="source-badges">
+              <span>CDC PLACES 2023</span>
+              <span>Census ACS 5-Year</span>
+              <span>USDA Food Access Atlas</span>
+              <span>3,100+ Counties</span>
+            </div>
+          </div>
+          <div className="summary-card">
+            <h3>Tech Stack</h3>
+            <p style={{ marginBottom: 16 }}>
+              PostgreSQL · Neon · Netlify Functions · React · Recharts · Leaflet
+            </p>
+            <h3>Scoring Model</h3>
+            <p>40% Health Risk · 35% Economic Vulnerability · 25% Food Access Burden</p>
+          </div>
+        </section>
+      </div>
+
+      <div className="container">
+
+        {error && <div className="error-banner">⚠ API error: {error} — showing cached data.</div>}
+
+        {/* ── KPI Cards ── */}
+        <div className="metrics">
+          <StatCard label="Avg Priority Score"  value={avgScore}                     loading={loading} />
+          <StatCard label="High Risk Counties"  value={highRisk.toLocaleString()}    loading={loading} />
+          <StatCard label="States Covered"      value={stateCount}                   loading={loading} />
+        </div>
+
+        {/* ── Map ── */}
+        <section className="card" style={{ padding: "28px 28px 20px" }}>
+          <div className="section-label">Geographic Risk Analysis</div>
+          <h2 style={{ marginBottom: 4 }}>County Risk Map</h2>
+          <p style={{ marginBottom: 20, fontSize: 13 }}>
+            Counties colored by composite priority score. Hover for details, click to explore.
           </p>
-          <div className="badges">
-            <span className="badge">CDC PLACES 2023</span>
-            <span className="badge">Census ACS 5-Year</span>
-            <span className="badge">USDA Food Access 2019</span>
-            <span className="badge">Live Neon Database</span>
-            <span className="badge">Netlify Functions API</span>
+          <div style={{ height: 560 }}>
+            <CountyMap
+              countyData={countyData}
+              availableYears={availableYears}
+              onCountyClick={(fips, name) => console.log("Selected:", fips, name)}
+            />
           </div>
-        </div>
-        <div className="hero-meta">
-          <div className="meta-item">
-            <div className="meta-label">Scoring Model</div>
-            <div className="meta-value">40% Health · 35% Economic · 25% Food Access</div>
-          </div>
-          <div className="meta-item">
-            <div className="meta-label">Stack</div>
-            <div className="meta-value">PostgreSQL · React · Leaflet · Netlify</div>
-          </div>
-          <div className="meta-item">
-            <div className="meta-label">Data Coverage</div>
-            <div className="meta-value">3,100+ counties · All 50 states + DC</div>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Tab Switcher ── */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 32, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              background: "none",
-              border: "none",
-              borderBottom: activeTab === tab.id ? "2px solid #3b82f6" : "2px solid transparent",
-              color: activeTab === tab.id ? "#f0f4f8" : "var(--muted)",
-              padding: "12px 4px 14px",
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: activeTab === tab.id ? 600 : 400,
-              fontFamily: "inherit",
-              marginBottom: -1,
-              transition: "all 0.15s",
-            }}
-          >
-            {tab.label}
-            <span style={{ display: "block", fontSize: 11, color: "var(--muted2)", fontWeight: 400, marginTop: 2 }}>
-              {tab.desc}
+          <div className="tier-legend">
+            {Object.entries(TIER_COLORS).map(([tier, color]) => (
+              <div key={tier} className="tier-item">
+                <div className="tier-dot" style={{ background: color }} />
+                <span>{tier.charAt(0) + tier.slice(1).toLowerCase()} Risk</span>
+              </div>
+            ))}
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8" }}>
+              Score thresholds: HIGH ≥50 · ELEVATED ≥35 · MODERATE ≥20
             </span>
-          </button>
-        ))}
-      </div>
-
-      {/* ── KPI Cards (both tabs) ── */}
-      <div className="kpi-grid">
-        <KpiCard label="Counties Tracked"   value={countyCount} sub="Across all 50 states + DC"  accent="#3b82f6" loading={loading} />
-        <KpiCard label="High Risk Counties" value={highRisk}    sub="Priority score ≥ 50"         accent="#ef4444" loading={loading} />
-        <KpiCard label="Avg Priority Score" value={avgScore}    sub="National average (0–100)"    accent="#f97316" loading={loading} />
-        <KpiCard label="States Covered"     value={stateCount}  sub="Including DC"                accent="#22c55e" loading={loading} />
-      </div>
-
-      {/* ════════════════════════════════════════════
-          COMMUNITY TAB
-      ════════════════════════════════════════════ */}
-      {activeTab === "community" && (
-        <>
-          {/* What the scores mean */}
-          <div className="card" style={{ marginBottom: 20, background: "rgba(59,130,246,0.04)", borderColor: "rgba(59,130,246,0.15)" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24 }}>
-              <div>
-                <div className="card-eyebrow">How to read this dashboard</div>
-                <h2 style={{ marginBottom: 8 }}>What the scores mean</h2>
-                <p className="card-desc">
-                  Every US county gets a priority score from 0 to 100. Higher means more need.
-                  No single factor decides it — a county scores high only when health outcomes,
-                  economic hardship, and food access problems all point the same direction.
-                </p>
-              </div>
-              {[
-                { tier: "HIGH",     color: "#ef4444", range: "Score ≥ 50", desc: "Faces serious challenges across multiple dimensions. These counties should be first in line for outreach, funding, and intervention programs." },
-                { tier: "ELEVATED", color: "#f97316", range: "Score 35–49", desc: "Meaningful risk in at least one or two areas. Worth monitoring closely and including in regional planning conversations." },
-                { tier: "MODERATE", color: "#eab308", range: "Score 20–34", desc: "Below the national average for combined risk. Some pockets of need may exist but the county is not a priority target." },
-                { tier: "LOW",      color: "#22c55e", range: "Score < 20",  desc: "Relatively healthy, economically stable, and food-accessible compared to the rest of the country." },
-              ].map(({ tier, color, range, desc }) => (
-                <div key={tier} style={{ borderLeft: `3px solid ${color}`, paddingLeft: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontWeight: 700, fontSize: 13, color }}>{tier}</span>
-                    <span style={{ fontSize: 11, color: "var(--muted2)" }}>{range}</span>
-                  </div>
-                  <p className="card-desc" style={{ fontSize: 12 }}>{desc}</p>
-                </div>
-              ))}
-            </div>
           </div>
+        </section>
 
-          {/* Map */}
+        {/* ── Charts ── */}
+        <div className="charts">
           <div className="card">
-            <div className="card-header">
-              <div className="card-eyebrow">Geographic Analysis</div>
-              <h2>County Risk Map</h2>
-              <p className="card-desc">
-                Every US county colored by composite priority score. Red = highest need.
-                Hover any county to see its full breakdown. Use the metric selector to explore individual dimensions.
-              </p>
-            </div>
-            <div style={{ height: 520 }}>
-              <CountyMap
-                countyData={countyData}
-                availableYears={availableYears}
-                onCountyClick={(fips, name) => console.log("Selected:", fips, name)}
-              />
-            </div>
+            <div className="section-label">Priority Ranking</div>
+            <h2>Top 10 Counties</h2>
+            <p style={{ marginBottom: 20, fontSize: 13 }}>Highest composite risk scores nationally.</p>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={topCounties} margin={{ top: 4, right: 8, bottom: 40, left: 0 }}>
+                <XAxis
+                  dataKey="county_name"
+                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  angle={-35}
+                  textAnchor="end"
+                  interval={0}
+                />
+                <YAxis domain={[0, 80]} tick={{ fontSize: 10, fill: "#64748b" }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="priority_score" fill="#2563eb" radius={[4, 4, 0, 0]} name="Priority Score" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
 
-          {/* County Explorer + Tier Distribution */}
-          <div className="three-col">
-            <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-header">
-                <div className="card-eyebrow">County Explorer</div>
-                <h2>Search & Filter Counties</h2>
-                <p className="card-desc">Showing top 50 results. Click column headers to sort.</p>
-              </div>
-              <div className="table-controls">
-                <input className="search-input" placeholder="Search county or state..." value={search} onChange={e => setSearch(e.target.value)} />
-                <select className="filter-select" value={stateFilter} onChange={e => setStateFilter(e.target.value)}>
-                  {stateOptions.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>County</th>
-                      <th>St</th>
-                      <th onClick={() => handleSort("priority_score")}>Score{sortArrow("priority_score")}</th>
-                      <th onClick={() => handleSort("health_risk_score")}>Health{sortArrow("health_risk_score")}</th>
-                      <th onClick={() => handleSort("economic_risk_score")}>Econ{sortArrow("economic_risk_score")}</th>
-                      <th onClick={() => handleSort("food_access_burden")}>Food{sortArrow("food_access_burden")}</th>
-                      <th>Tier</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "var(--muted2)" }}>Loading data...</td></tr>
-                    ) : tableData.map((c, i) => (
-                      <tr key={c.county_fips}>
-                        <td><span className="rank-num">{i + 1}</span></td>
-                        <td><span className="county-name">{c.county_name}</span></td>
-                        <td style={{ color: "var(--muted2)", fontSize: 11 }}>{c.state_abbr}</td>
-                        <td><span className="score-num">{c.priority_score}</span></td>
-                        <td><ScoreBar value={c.health_risk_score}   color="#3b82f6" /></td>
-                        <td><ScoreBar value={c.economic_risk_score} color="#f97316" /></td>
-                        <td><ScoreBar value={c.food_access_burden}  color="#22c55e" /></td>
-                        <td><TierBadge tier={c.risk_tier} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <div className="card" style={{ marginBottom: 0 }}>
-                <div className="card-header">
-                  <div className="card-eyebrow">Risk Distribution</div>
-                  <h2>Counties by Tier</h2>
-                </div>
-                <div className="tier-dist">
-                  {Object.entries(TIER_CONFIG).map(([tier, cfg]) => (
-                    <div key={tier} className="tier-dist-row">
-                      <div className="tier-dist-label" style={{ color: cfg.color, fontSize: 11 }}>{tier}</div>
-                      <div className="tier-dist-bar-bg">
-                        <div className="tier-dist-bar-fill" style={{ width: `${countyCount ? (tierCounts[tier] / countyCount) * 100 : 0}%`, background: cfg.color, opacity: 0.7 }} />
-                      </div>
-                      <div className="tier-dist-count">{tierCounts[tier].toLocaleString()}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="card" style={{ marginBottom: 0, flex: 1 }}>
-                <div className="card-header">
-                  <div className="card-eyebrow">Risk Correlation</div>
-                  <h2>Economic vs Health Risk</h2>
-                  <p className="card-desc">Each dot is one US county.</p>
-                </div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <ScatterChart margin={{ top: 4, right: 8, bottom: 16, left: -16 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="economic_risk_score" name="Economic Risk" tick={{ fontSize: 9, fill: "#4a5a6a" }}
-                      label={{ value: "Economic Risk →", position: "insideBottom", offset: -8, fontSize: 10, fill: "#4a5a6a" }} />
-                    <YAxis dataKey="health_risk_score" name="Health Risk" tick={{ fontSize: 9, fill: "#4a5a6a" }}
-                      label={{ value: "Health Risk →", angle: -90, position: "insideLeft", fontSize: 10, fill: "#4a5a6a" }} />
-                    <Tooltip content={<DarkTooltip />} cursor={{ stroke: "rgba(255,255,255,0.1)" }} />
-                    <Scatter data={usData} fill="#3b82f6" fillOpacity={0.4} r={2} />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
-          {/* Closing message + contacts */}
-          <div className="card" style={{ textAlign: "center", borderColor: "rgba(59,130,246,0.2)", background: "rgba(59,130,246,0.04)", marginBottom: 20 }}>
-            <p style={{ fontSize: 15, color: "var(--text)", marginBottom: 8, fontWeight: 500 }}>
-              If this data helped you make a better decision, pointed you somewhere useful, or gave your community a voice it didn't have before — that's exactly why it was built.
-            </p>
-            <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 640, margin: "0 auto 20px" }}>
-              This dashboard is a starting point, not a final answer. The data comes from federal agencies who publish it specifically so communities can use it. If something here concerns you or your area, these are the right people to contact:
-            </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, maxWidth: 700, margin: "0 auto", textAlign: "left" }}>
-              <LinkCard name="CDC PLACES"           desc="Health outcomes & chronic disease data"   url="https://www.cdc.gov/places" />
-              <LinkCard name="Census Bureau"         desc="Economic & demographic questions"         url="https://www.census.gov/about/contact-us.html" />
-              <LinkCard name="USDA ERS"              desc="Food access & rural concerns"             url="https://www.ers.usda.gov/contact-us" />
-              <LinkCard name="County Health Rankings" desc="Local health improvement resources"      url="https://www.countyhealthrankings.org" />
-              <LinkCard name="HRSA"                  desc="Healthcare access & shortage areas"       url="https://www.hrsa.gov/about/contact" />
-              <LinkCard name="Local Health Dept"     desc="Community-level action & programs"        url="https://www.naccho.org/membership/lhd-directory" />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ════════════════════════════════════════════
-          TECHNICAL TAB
-      ════════════════════════════════════════════ */}
-      {activeTab === "technical" && (
-        <>
-          {/* Architecture Overview */}
           <div className="card">
-            <div className="card-header">
-              <div className="card-eyebrow">System Architecture</div>
-              <h2>How It's Built</h2>
-              <p className="card-desc">
-                A full-stack BI pipeline from raw federal data to live interactive dashboard —
-                built entirely with free-tier infrastructure.
-              </p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-              {[
-                { step: "01", label: "Data Ingestion", color: "#3b82f6", items: ["CDC PLACES national CSV", "Census ACS API (51 states)", "USDA Food Access Atlas XLSX", "Python ETL — pandas + psycopg2", "Resumable pipeline with load tracking"] },
-                { step: "02", label: "Database Layer", color: "#8b5cf6", items: ["PostgreSQL 17 on Neon (serverless)", "Star schema — dim + fact tables", "72,531 food access tracts", "50,847 health measure rows", "Time-series schema for multi-year"] },
-                { step: "03", label: "Scoring Engine", color: "#f97316", items: ["Min-max normalization via window functions", "40% health · 35% economic · 25% food", "NULL-safe arithmetic throughout", "Single SQL query — no application logic", "Computed fresh on every API call"] },
-                { step: "04", label: "API + Frontend", color: "#22c55e", items: ["Netlify Functions (Node.js + pg)", "Two endpoints: /scores and /years", "React + Vite frontend", "Leaflet choropleth map", "Auto-deploy from GitHub via Netlify CI"] },
-              ].map(({ step, label, color, items }) => (
-                <div key={step} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 10, padding: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color, letterSpacing: "0.1em", marginBottom: 6 }}>STEP {step}</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 14 }}>{label}</div>
-                  <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 7 }}>
-                    {items.map(item => (
-                      <li key={item} style={{ fontSize: 12, color: "var(--muted)", paddingLeft: 14, position: "relative" }}>
-                        <span style={{ position: "absolute", left: 0, color }}>›</span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
+            <div className="section-label">Risk Correlation</div>
+            <h2>Economic vs Health Risk</h2>
+            <p style={{ marginBottom: 20, fontSize: 13 }}>Each dot represents one county nationally.</p>
+            <ResponsiveContainer width="100%" height={260}>
+              <ScatterChart margin={{ top: 4, right: 8, bottom: 20, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis
+                  dataKey="economic_risk_score"
+                  name="Economic Risk"
+                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  label={{ value: "Economic Risk", position: "insideBottom", offset: -10, fontSize: 11, fill: "#94a3b8" }}
+                />
+                <YAxis
+                  dataKey="health_risk_score"
+                  name="Health Risk"
+                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  label={{ value: "Health Risk", angle: -90, position: "insideLeft", fontSize: 11, fill: "#94a3b8" }}
+                />
+                <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: "3 3" }} />
+                <Scatter data={usData} fill="#2563eb" fillOpacity={0.5} />
+              </ScatterChart>
+            </ResponsiveContainer>
           </div>
-
-          {/* Data Coverage */}
-          <div className="two-col">
-            <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-header">
-                <div className="card-eyebrow">Data Sources</div>
-                <h2>Coverage & Volume</h2>
-              </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Source</th>
-                    <th>Dataset</th>
-                    <th>Year</th>
-                    <th>Rows</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { source: "CDC PLACES",   dataset: "County Health Measures",    year: "2023", rows: "50,847" },
-                    { source: "Census ACS",   dataset: "5-Year Economic Estimates", year: "2023", rows: "3,144"  },
-                    { source: "USDA ERS",     dataset: "Food Access Atlas (tracts)", year: "2019", rows: "72,531" },
-                    { source: "dim_county",   dataset: "County Dimension Table",    year: "—",    rows: "3,154"  },
-                  ].map(r => (
-                    <tr key={r.source}>
-                      <td style={{ fontWeight: 600, color: "var(--text)" }}>{r.source}</td>
-                      <td>{r.dataset}</td>
-                      <td style={{ color: "var(--muted2)" }}>{r.year}</td>
-                      <td style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, color: "#3b82f6" }}>{r.rows}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-header">
-                <div className="card-eyebrow">Scoring Detail</div>
-                <h2>Methodology Breakdown</h2>
-              </div>
-              {[
-                { label: "Health Risk (40%)", color: "#3b82f6", measures: "Diabetes, Obesity, Hypertension, CHD, COPD, Cancer, Asthma, Stroke, Poor Mental Health, Poor Physical Health — averaged via CDC crude prevalence rates" },
-                { label: "Economic Vulnerability (35%)", color: "#f97316", measures: "Poverty rate (50% weight) + Uninsured rate (30%) + Median household income inverted (20%) — all from Census ACS 5-Year" },
-                { label: "Food Access Burden (25%)", color: "#22c55e", measures: "Low-income + low-access population as share of county total — aggregated from 72,531 USDA census tracts to county level" },
-                { label: "Preventive Care Gap (display only)", color: "#8b5cf6", measures: "Annual checkup, dental, mammography, cervical screening, cholesterol screening — inverted so lower care rate = higher gap score" },
-              ].map(({ label, color, measures }) => (
-                <div key={label} style={{ borderLeft: `3px solid ${color}`, paddingLeft: 14, marginBottom: 18 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 4 }}>{label}</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>{measures}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* SQL Techniques + Top Counties Chart */}
-          <div className="two-col">
-            <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-header">
-                <div className="card-eyebrow">Technical Portfolio</div>
-                <h2>SQL & Analytics Techniques</h2>
-              </div>
-              <div className="skills-wrap">
-                {[
-                  "Window Functions","CTEs","Min-Max Normalization","Multi-source Joins",
-                  "Stored Procedures","Materialized Views","Composite Indexing","KPI Modeling",
-                  "NULL-safe Arithmetic","Serverless API Design","National ETL Pipeline",
-                  "Time-series Schema","Resumable Pipeline","Star Schema Design",
-                ].map(s => <span key={s} className="skill-tag">{s}</span>)}
-              </div>
-
-              <div style={{ marginTop: 24 }}>
-                <div className="card-eyebrow" style={{ marginBottom: 12 }}>Key SQL Pattern — Scoring Query</div>
-                <pre style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, fontSize: 11, color: "#94a3b8", overflowX: "auto", lineHeight: 1.7 }}>
-{`WITH health_outcome AS (
-  SELECT county_fips,
-    AVG(value)::numeric AS outcome_avg
-  FROM fact_health_measures
-  WHERE year = 2023
-    AND measure_id IN ('DIABETES','OBESITY',...)
-  GROUP BY county_fips
-),
-health_scored AS (
-  SELECT county_fips,
-    100::numeric
-      * (outcome_avg - MIN(outcome_avg) OVER ())
-      / NULLIF(MAX(outcome_avg) OVER ()
-           - MIN(outcome_avg) OVER (), 0)
-    AS health_risk_score
-  FROM health_outcome
-)
--- + econ_scored, food_scored CTEs...
-SELECT d.county_fips,
-  COALESCE(hs.health_risk_score, 0)::float,
-  COALESCE(es.economic_risk_score, 0)::float,
-  COALESCE(fs.food_access_burden, 0)::float
-FROM dim_county d
-LEFT JOIN health_scored hs USING (county_fips)
-LEFT JOIN econ_scored   es USING (county_fips)
-LEFT JOIN food_scored   fs USING (county_fips)`}
-                </pre>
-              </div>
-            </div>
-
-            <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-header">
-                <div className="card-eyebrow">Priority Ranking</div>
-                <h2>Top 10 Counties by Score</h2>
-                <p className="card-desc">Highest composite risk scores nationally — 2023 data.</p>
-              </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={topCounties} layout="vertical" margin={{ top: 4, right: 40, bottom: 4, left: 80 }}>
-                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: "#4a5a6a" }} />
-                  <YAxis type="category" dataKey="county_name" tick={{ fontSize: 11, fill: "#7a8ba0" }} width={80} />
-                  <Tooltip
-                    formatter={(val) => [`${val}`, "Priority Score"]}
-                    contentStyle={{ background: "#0d1117", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
-                  />
-                  <Bar dataKey="priority_score" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-
-              <div style={{ marginTop: 20 }}>
-                <div className="card-eyebrow" style={{ marginBottom: 12 }}>API Endpoints</div>
-                {[
-                  { method: "GET", path: "/.netlify/functions/scores", desc: "All county scores, latest year" },
-                  { method: "GET", path: "/.netlify/functions/scores?year=2023", desc: "Scores for specific year" },
-                  { method: "GET", path: "/.netlify/functions/years", desc: "Available data years" },
-                ].map(e => (
-                  <div key={e.path} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
-                    <span style={{ background: "rgba(59,130,246,0.12)", color: "#3b82f6", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, whiteSpace: "nowrap", marginTop: 1 }}>{e.method}</span>
-                    <div>
-                      <div style={{ fontSize: 11, fontFamily: "monospace", color: "#94a3b8" }}>{e.path}</div>
-                      <div style={{ fontSize: 11, color: "var(--muted2)" }}>{e.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Links */}
-          <div className="card">
-            <div className="card-header">
-              <div className="card-eyebrow">Project Links</div>
-              <h2>Source & Documentation</h2>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-              <LinkCard name="GitHub Repository"    desc="Full source code, ETL scripts, SQL"       url="https://github.com/Gelas-Soldat/community-health-intelligence" />
-              <LinkCard name="CDC PLACES Data"      desc="Source health outcomes dataset"            url="https://www.cdc.gov/places" />
-              <LinkCard name="Census ACS API"       desc="Economic & demographic source"             url="https://www.census.gov/data/developers/data-sets/acs-5year.html" />
-              <LinkCard name="USDA Food Atlas"      desc="Food access source data"                   url="https://www.ers.usda.gov/data-products/food-access-research-atlas" />
-              <LinkCard name="Neon Database"        desc="Serverless Postgres hosting"               url="https://neon.tech" />
-              <LinkCard name="Netlify Functions"    desc="Serverless API documentation"              url="https://docs.netlify.com/functions/overview" />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ── Footer (both tabs) ── */}
-      <footer className="footer">
-        <p>
-          Community Health Intelligence · Built by{" "}
-          <a href="https://github.com/Gelas-Soldat" target="_blank" rel="noopener noreferrer"
-            style={{ color: "#3b82f6", textDecoration: "none" }}>Ryan</a>
-          {" "}· Data: CDC PLACES, US Census Bureau, USDA ERS · 2023
-        </p>
-        <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-          <a href="https://buymeacoffee.com/ryancreates" target="_blank" rel="noopener noreferrer"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFDD00", color: "#000", fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 20, textDecoration: "none" }}>
-            ☕ Buy Me a Coffee
-          </a>
-          <a href="https://ko-fi.com/gelassoldat" target="_blank" rel="noopener noreferrer"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FF5E5B", color: "#fff", fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 20, textDecoration: "none" }}>
-            ❤️ Ko-fi
-          </a>
-          <a href="https://github.com/Gelas-Soldat" target="_blank" rel="noopener noreferrer"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#24292e", color: "#fff", fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 20, textDecoration: "none" }}>
-            ⭐ GitHub
-          </a>
         </div>
-      </footer>
 
-    </div>
+        {/* ── Methodology + Stakeholders ── */}
+        <div className="stakeholders">
+          <div className="card">
+            <div className="section-label">Business Context</div>
+            <h2>The Problem</h2>
+            <p style={{ marginBottom: 16 }}>
+              Public health agencies operate with limited outreach budgets and fragmented
+              data. A county may have high chronic disease rates, extreme poverty, and poor
+              food access simultaneously — but no single dataset captures the full picture.
+            </p>
+            <p>
+              This dashboard combines three federal datasets into a single composite priority
+              score, giving planners a ranked list of where intervention dollars will have
+              the most impact.
+            </p>
+          </div>
+
+          <div className="card">
+            <div className="section-label">Scoring Methodology</div>
+            <h2>How It Works</h2>
+            <p style={{ marginBottom: 16 }}>Priority Score = weighted composite of three normalized dimensions:</p>
+            <ul>
+              <li><strong>40% Health Risk</strong> — Average of 10 CDC chronic disease indicators</li>
+              <li><strong>35% Economic Vulnerability</strong> — Poverty rate, uninsured rate, median income</li>
+              <li><strong>25% Food Access Burden</strong> — USDA low income + low access population share</li>
+            </ul>
+            <div className="tier-legend" style={{ marginTop: 20, paddingTop: 16 }}>
+              {Object.entries(TIER_COLORS).map(([tier, color]) => (
+                <div key={tier} className="tier-item">
+                  <div className="tier-dot" style={{ background: color }} />
+                  <span style={{ fontSize: 12 }}>{tier}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Top Counties Table ── */}
+        <section className="card">
+          <div className="section-label">Highest Priority Counties</div>
+          <h2 style={{ marginBottom: 20 }}>Top 10 by National Rank</h2>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
+                {["Rank","County","State","Priority","Health","Economic","Food Access","Tier"].map(h => (
+                  <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {topCounties.map((c, i) => (
+                <tr key={c.county_fips} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
+                  <td style={{ padding: "10px 12px", fontWeight: 600, color: "#94a3b8" }}>#{i + 1}</td>
+                  <td style={{ padding: "10px 12px", fontWeight: 500 }}>{c.county_name}</td>
+                  <td style={{ padding: "10px 12px", color: "#64748b" }}>{c.state_abbr}</td>
+                  <td style={{ padding: "10px 12px", fontWeight: 700, color: "#0f172a" }}>{c.priority_score}</td>
+                  <td style={{ padding: "10px 12px", color: "#64748b" }}>{c.health_risk_score.toFixed(1)}</td>
+                  <td style={{ padding: "10px 12px", color: "#64748b" }}>{c.economic_risk_score.toFixed(1)}</td>
+                  <td style={{ padding: "10px 12px", color: "#64748b" }}>{c.food_access_burden.toFixed(1)}</td>
+                  <td style={{ padding: "10px 12px" }}><TierBadge tier={c.risk_tier} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        {/* ── SQL Skills ── */}
+        <section className="card">
+          <div className="section-label">Technical Skills</div>
+          <h2 style={{ marginBottom: 16 }}>SQL & Analytics Techniques</h2>
+          <div className="skills-grid">
+            {["Complex Joins","CTEs","Window Functions","Materialized Views","Indexes","Subqueries",
+              "Performance Tuning","KPI Modeling","Normalization","Stored Procedures"].map(s => (
+              <span key={s}>{s}</span>
+            ))}
+          </div>
+        </section>
+
+        <footer className="footer">
+          <p>
+            Built by Ryan · Community Health Intelligence BI Dashboard ·
+            Data: CDC PLACES, Census ACS, USDA Food Access Research Atlas · 2023
+          </p>
+        </footer>
+
+      </div>
+    </>
   );
 }
