@@ -77,7 +77,10 @@ exports.handler = async (event) => {
     const incomes   = cpRes.rows.map(r => parseFloat(r.median_household_income)).filter(v => !isNaN(v));
     const foods     = faRes.rows.map(r => parseFloat(r.food_pct)).filter(v => !isNaN(v));
 
-    const minMax = (arr) => ({ min: Math.min(...arr), max: Math.max(...arr) });
+    const minMax = (arr) => ({
+  min: arr.reduce((a, b) => Math.min(a, b), Infinity),
+  max: arr.reduce((a, b) => Math.max(a, b), -Infinity),
+});
     const outMM  = minMax(outcomes);
     const careMM = minMax(cares);
     const povMM  = minMax(poverties);
