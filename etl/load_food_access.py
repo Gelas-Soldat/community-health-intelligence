@@ -9,6 +9,7 @@ Sheet: Food Access Research Atlas
 import logging
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import psycopg2
 import psycopg2.extras
@@ -24,30 +25,15 @@ ATLAS_YEAR_MAP = {
     2022: 2019, 2023: 2019, 2024: 2019,
 }
 
-# State FIPS lookup by abbreviation for dim_county inserts
-STATE_FIPS = {
-    "AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"09",
-    "DE":"10","DC":"11","FL":"12","GA":"13","HI":"15","ID":"16","IL":"17",
-    "IN":"18","IA":"19","KS":"20","KY":"21","LA":"22","ME":"23","MD":"24",
-    "MA":"25","MI":"26","MN":"27","MS":"28","MO":"29","MT":"30","NE":"31",
-    "NV":"32","NH":"33","NJ":"34","NM":"35","NY":"36","NC":"37","ND":"38",
-    "OH":"39","OK":"40","OR":"41","PA":"42","RI":"44","SC":"45","SD":"46",
-    "TN":"47","TX":"48","UT":"49","VT":"50","VA":"51","WA":"53","WV":"54",
-    "WI":"55","WY":"56",
-}
-
 
 def _upsert_missing_counties(cur, df):
-    """Insert any counties from the atlas that aren't already in dim_county."""
     county_df = df[["county_fips", "County", "State"]].drop_duplicates("county_fips").copy()
     county_df["state_fips"] = county_df["county_fips"].str[:2]
-
     records = [
         (row.county_fips, row.County, row.state_fips, row.State, row.State)
         for row in county_df.itertuples()
         if row.county_fips and len(str(row.county_fips)) == 5
     ]
-
     psycopg2.extras.execute_batch(cur, """
         INSERT INTO dim_county
             (county_fips, county_name, state_fips, state_name, state_abbr)
@@ -74,21 +60,31 @@ def load_food_access(conn, atlas_year, data_year):
     df = pd.read_excel(file_path, sheet_name=sheet_name, dtype=str)
     log.info(f"  Raw rows: {len(df):,} tracts")
 
-    # Build tract_fips and county_fips
+    # Build FIPS columns
     df["tract_fips"]  = df["CensusTract"].astype(str).str.zfill(11)
     df["county_fips"] = df["tract_fips"].str[:5]
 
-    # Filter to valid FIPS first
+    # Filter to valid FIPS
     df = df[df["tract_fips"].str.match(r"^\d{11}$")]
     df = df[df["county_fips"].str.match(r"^\d{5}$")]
     df = df.dropna(subset=["tract_fips", "county_fips"])
 
-    # Map columns to schema
-    df["tract_population"]               = pd.to_numeric(df["Pop2010"],          errors="coerce")
-    df["low_income_flag"]                = pd.to_numeric(df["LowIncomeTracts"],   errors="coerce")
-    df["low_access_flag"]                = pd.to_numeric(df["LATracts1"],         errors="coerce")
-    df["low_income_low_access_population"]= pd.to_numeric(df["lalowi1"],          errors="coerce")
-    df["low_access_population"]          = pd.to_numeric(df["lapop1"],            errors="coerce")
+    # Coerce numeric columns — errors="coerce" turns bad values into NaN
+    df["tract_population"]                = pd.to_numeric(df["Pop2010"],        errors="coerce")
+    df["low_income_flag"]                 = pd.to_numeric(df["LowIncomeTracts"],errors="coerce")
+    df["low_access_flag"]                 = pd.to_numeric(df["LATracts1"],      errors="coerce")
+    df["low_income_low_access_population"]= pd.to_numeric(df["lalowi1"],        errors="coerce")
+    df["low_access_population"]           = pd.to_numeric(df["lapop1"],         errors="coerce")
+
+    # Replace NaN with None so Postgres stores NULL instead of NaN
+    # NaN stored as numeric NaN poisons any SUM/AVG that touches it
+    numeric_cols = [
+        "tract_population", "low_income_flag", "low_access_flag",
+        "low_income_low_access_population", "low_access_population",
+    ]
+    for col in numeric_cols:
+        df[col] = df[col].where(df[col].notna(), other=None)
+
     df["year"] = data_year
 
     log.info(f"  After filter: {len(df):,} tracts, "
@@ -99,11 +95,6 @@ def load_food_access(conn, atlas_year, data_year):
         "tract_population", "low_income_flag", "low_access_flag",
         "low_income_low_access_population", "low_access_population"
     ]
-
-    with conn.cursor() as cur:
-        # Ensure all counties exist in dim_county BEFORE narrowing df
-        _upsert_missing_counties(cur, df)
-
     df = df[keep].copy()
 
     cols    = df.columns.tolist()
@@ -113,7 +104,7 @@ def load_food_access(conn, atlas_year, data_year):
     records = [tuple(r) for r in df.itertuples(index=False, name=None)]
 
     with conn.cursor() as cur:
-
+        _upsert_missing_counties(cur, df)
         psycopg2.extras.execute_batch(cur, f"""
             INSERT INTO fact_food_access ({names})
             VALUES ({ph})
