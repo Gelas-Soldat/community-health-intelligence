@@ -10,7 +10,7 @@ A full-stack business intelligence project identifying US counties where health 
 
 ## Live Dashboard
 
-**[community-health-intelligence.netlify.app](https://community-health-intelligence.netlify.app)**
+**[Community Health Intelligence](https://uscounty.health)**
 
 - Interactive choropleth map of all 3,100+ US counties
 - Real-time scores computed from a live cloud database
