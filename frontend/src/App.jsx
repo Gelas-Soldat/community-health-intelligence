@@ -384,6 +384,35 @@ export default function App() {
         </div>
       </div>
 
+      {/* ── Closing Message ── */}
+      <div className="card" style={{ textAlign: "center", borderColor: "rgba(59,130,246,0.2)", background: "rgba(59,130,246,0.04)", marginBottom: 20 }}>
+        <p style={{ fontSize: 15, color: "var(--text)", marginBottom: 8, fontWeight: 500 }}>
+          If this data helped you make a better decision, pointed you somewhere useful, or gave your community a voice it didn't have before — that's exactly why it was built.
+        </p>
+        <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 640, margin: "0 auto 20px" }}>
+          This dashboard is a starting point, not a final answer. The data comes from federal agencies who publish it specifically so communities can use it. If something here concerns you or your area, these are the right people to contact:
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, maxWidth: 700, margin: "0 auto", textAlign: "left" }}>
+          {[
+            { name: "CDC PLACES", desc: "Health outcomes & chronic disease data", url: "https://www.cdc.gov/places" },
+            { name: "Census Bureau", desc: "Economic & demographic questions", url: "https://www.census.gov/about/contact-us.html" },
+            { name: "USDA ERS", desc: "Food access & rural concerns", url: "https://www.ers.usda.gov/contact-ers" },
+            { name: "County Health Rankings", desc: "Local health improvement resources", url: "https://www.countyhealthrankings.org" },
+            { name: "HRSA", desc: "Healthcare access & shortage areas", url: "https://www.hrsa.gov/about/contact" },
+            { name: "Your Local Health Dept", desc: "Community-level action & programs", url: "https://www.naccho.org/membership/lhd-directory" },
+          ].map(({ name, desc, url }) => (
+            <a key={name} href={url} target="_blank" rel="noopener noreferrer"
+              style={{ display: "block", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", textDecoration: "none", transition: "border-color 0.2s" }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(59,130,246,0.4)"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"}
+            >
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#3b82f6", marginBottom: 3 }}>{name} →</div>
+              <div style={{ fontSize: 11, color: "var(--muted2)" }}>{desc}</div>
+            </a>
+          ))}
+        </div>
+      </div>
+
       <footer className="footer">
   <p>
     Community Health Intelligence · Built by{" "}
