@@ -74,12 +74,12 @@ exports.handler = async (event) => {
         ROUND(
           100.0 * (h.outcome_avg - m.out_min)
                / NULLIF(m.out_max - m.out_min, 0)
-        ::numeric, 2) AS health_risk_score,
+        , 2) AS health_risk_score,
         -- Normalize care gap (lower care = higher gap score, so invert)
         ROUND(
           100.0 * (1 - (h.care_avg - m.care_min)
                / NULLIF(m.care_max - m.care_min, 0))
-        ::numeric, 2) AS preventive_care_gap
+        , 2) AS preventive_care_gap
       FROM health_raw h
       CROSS JOIN health_minmax m
     `;
@@ -118,7 +118,7 @@ exports.handler = async (event) => {
             20.0 * (1 - (e.median_household_income - m.inc_min)
                       / NULLIF(m.inc_max - m.inc_min, 0))
           )
-        ::numeric, 2) AS economic_risk_score
+        , 2) AS economic_risk_score
       FROM econ_raw e
       CROSS JOIN econ_minmax m
     `;
@@ -143,7 +143,7 @@ exports.handler = async (event) => {
         ROUND(
           100.0 * (f.food_burden_pct - m.f_min)
                / NULLIF(m.f_max - m.f_min, 0)
-        ::numeric, 2) AS food_access_burden
+        , 2) AS food_access_burden
       FROM food_raw f
       CROSS JOIN food_minmax m
     `;
