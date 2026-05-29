@@ -89,37 +89,37 @@ def get_db_connection():
     )
 
 
-def already_loaded(conn, source: str, data_year: int, state_fips: Optional[str]) -> bool:
+def already_loaded(conn, source: str, year: int, state_fips: Optional[str]) -> bool:
     """Check the data_loads table to see if this source/year/state is done."""
     with conn.cursor() as cur:
         cur.execute(
             """
             SELECT 1 FROM data_loads
-            WHERE source = %s AND data_year = %s AND state_fips IS NOT DISTINCT FROM %s
+            WHERE source = %s AND year = %s AND state_fips IS NOT DISTINCT FROM %s
             """,
-            (source, data_year, state_fips),
+            (source, year, state_fips),
         )
         return cur.fetchone() is not None
 
 
-def record_load(conn, source: str, data_year: int, state_fips: Optional[str],
+def record_load(conn, source: str, year: int, state_fips: Optional[str],
                 record_count: int, notes: str = "") -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO data_loads (source, data_year, state_fips, record_count, notes)
+            INSERT INTO data_loads (source, year, state_fips, record_count, notes)
             VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (source, data_year, state_fips) DO UPDATE
+            ON CONFLICT (source, year, state_fips) DO UPDATE
                 SET record_count = EXCLUDED.record_count,
                     loaded_at    = now(),
                     notes        = EXCLUDED.notes
             """,
-            (source, data_year, state_fips, record_count, notes),
+            (source, year, state_fips, record_count, notes),
         )
     conn.commit()
 
 
-def run_cdc_load(conn, data_year: int, states: dict[str, str]) -> dict:
+def run_cdc_load(conn, year: int, states: dict[str, str]) -> dict:
     """
     CDC PLACES is distributed as a single national CSV that includes all
     counties, so we load it once per year rather than per state.
@@ -127,15 +127,15 @@ def run_cdc_load(conn, data_year: int, states: dict[str, str]) -> dict:
     results = {"loaded": 0, "skipped": 0, "errors": []}
     source = "cdc_places"
 
-    if already_loaded(conn, source, data_year, None):
-        log.info(f"CDC PLACES {data_year} already loaded — skipping")
+    if already_loaded(conn, source, year, None):
+        log.info(f"CDC PLACES {year} already loaded — skipping")
         results["skipped"] = len(states)
         return results
 
-    log.info(f"Loading CDC PLACES data for year {data_year} (national file)...")
+    log.info(f"Loading CDC PLACES data for year {year} (national file)...")
     try:
-        count = load_cdc_places(conn=conn, year=data_year)
-        record_load(conn, source, data_year, None, count)
+        count = load_cdc_places(conn=conn, year=year)
+        record_load(conn, source, year, None, count)
         results["loaded"] = count
         log.info(f"  CDC PLACES: {count:,} rows loaded")
     except Exception as exc:
@@ -145,7 +145,7 @@ def run_cdc_load(conn, data_year: int, states: dict[str, str]) -> dict:
     return results
 
 
-def run_census_load(conn, data_year: int, states: dict[str, str]) -> dict:
+def run_census_load(conn, year: int, states: dict[str, str]) -> dict:
     """
     Census ACS is fetched via the Census API per state — it's faster to
     parallelize, but we keep it sequential here for simplicity and to
@@ -154,24 +154,24 @@ def run_census_load(conn, data_year: int, states: dict[str, str]) -> dict:
     results = {"loaded": 0, "skipped": 0, "errors": []}
     source = "census_acs"
 
-    with tqdm(total=len(states), desc=f"Census ACS {data_year}", unit="state") as pbar:
+    with tqdm(total=len(states), desc=f"Census ACS {year}", unit="state") as pbar:
         for state_fips, state_abbr in states.items():
             pbar.set_postfix(state=state_abbr)
 
-            if already_loaded(conn, source, data_year, state_fips):
-                log.debug(f"  Census {state_abbr} {data_year} already loaded")
+            if already_loaded(conn, source, year, state_fips):
+                log.debug(f"  Census {state_abbr} {year} already loaded")
                 results["skipped"] += 1
                 pbar.update(1)
                 continue
 
             try:
                 count = load_census_acs(conn=conn, state_fips=state_fips,
-                                        state_abbr=state_abbr, year=data_year)
-                record_load(conn, source, data_year, state_fips, count)
+                                        state_abbr=state_abbr, year=year)
+                record_load(conn, source, year, state_fips, count)
                 results["loaded"] += count
                 time.sleep(0.25)          # be polite to the Census API
             except Exception as exc:
-                log.error(f"  Census {state_abbr} {data_year} failed: {exc}")
+                log.error(f"  Census {state_abbr} {year} failed: {exc}")
                 results["errors"].append(f"{state_abbr}: {exc}")
 
             pbar.update(1)
@@ -179,14 +179,14 @@ def run_census_load(conn, data_year: int, states: dict[str, str]) -> dict:
     return results
 
 
-def run_food_access_load(conn, data_year: int, states: dict[str, str]) -> dict:
+def run_food_access_load(conn, year: int, states: dict[str, str]) -> dict:
     """
     USDA Food Access is a single national file released every few years.
     We load it once per atlas year and skip states we already have.
     """
     results = {"loaded": 0, "skipped": 0, "errors": []}
     source = "food_access"
-    atlas_year = FOOD_ACCESS_YEAR_MAP.get(data_year, 2019)
+    atlas_year = FOOD_ACCESS_YEAR_MAP.get(year, 2019)
 
     if already_loaded(conn, source, atlas_year, None):
         log.info(f"USDA Food Access {atlas_year} already loaded — skipping")
@@ -195,9 +195,9 @@ def run_food_access_load(conn, data_year: int, states: dict[str, str]) -> dict:
 
     log.info(f"Loading USDA Food Access atlas year {atlas_year} (national file)...")
     try:
-        count = load_food_access(conn=conn, atlas_year=atlas_year, data_year=data_year)
+        count = load_food_access(conn=conn, atlas_year=atlas_year, data_year=year)
         record_load(conn, source, atlas_year, None, count,
-                    notes=f"Loaded for pipeline year {data_year}")
+                    notes=f"Loaded for pipeline year {year}")
         results["loaded"] = count
         log.info(f"  Food Access: {count:,} rows loaded")
     except Exception as exc:
@@ -207,22 +207,22 @@ def run_food_access_load(conn, data_year: int, states: dict[str, str]) -> dict:
     return results
 
 
-def run_scoring(conn, data_year: int) -> None:
+def run_scoring(conn, year: int) -> None:
     """
     Re-runs the scoring stored procedure and trend computation after load.
     Your existing score_counties() proc should accept a year param.
     """
-    log.info(f"Running scoring for {data_year}...")
+    log.info(f"Running scoring for {year}...")
     with conn.cursor() as cur:
-        cur.execute("CALL score_counties(%s);", (data_year,))
-        cur.execute("CALL compute_trends(%s);", (data_year,))
+        cur.execute("CALL score_counties(%s);", (year,))
+        cur.execute("CALL compute_trends(%s);", (year,))
     conn.commit()
     log.info("Scoring complete.")
 
 
-def print_summary(results_by_source: dict, data_year: int, elapsed: float) -> None:
+def print_summary(results_by_source: dict, year: int, elapsed: float) -> None:
     log.info("\n" + "=" * 60)
-    log.info(f"PIPELINE SUMMARY — Year {data_year}")
+    log.info(f"PIPELINE SUMMARY — Year {year}")
     log.info(f"Elapsed: {elapsed:.1f}s")
     log.info("=" * 60)
     total_errors = 0
