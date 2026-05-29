@@ -180,6 +180,35 @@ export default function App() {
         <KpiCard label="States Covered"     value={stateCount} sub="Including DC"               accent="#22c55e" loading={loading} />
       </div>
 
+      {/* ── How to Read This ── */}
+      <div className="card" style={{ marginBottom: 20, background: "rgba(59,130,246,0.05)", borderColor: "rgba(59,130,246,0.15)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24 }}>
+          <div>
+            <div className="card-eyebrow">How to read this dashboard</div>
+            <h2 style={{ marginBottom: 8 }}>What the scores mean</h2>
+            <p className="card-desc">
+              Every US county gets a priority score from 0 to 100. Higher means more need. 
+              No single factor decides it — a county scores high only when health outcomes, 
+              economic hardship, and food access problems all point the same direction.
+            </p>
+          </div>
+          {[
+            { tier: "HIGH", color: "#ef4444", range: "Score ≥ 50", desc: "Faces serious challenges across multiple dimensions. These counties should be first in line for outreach, funding, and intervention programs." },
+            { tier: "ELEVATED", color: "#f97316", range: "Score 35–49", desc: "Meaningful risk in at least one or two areas. Worth monitoring closely and including in regional planning conversations." },
+            { tier: "MODERATE", color: "#eab308", range: "Score 20–34", desc: "Below the national average for combined risk. Some pockets of need may exist but the county is not a priority target." },
+            { tier: "LOW", color: "#22c55e", range: "Score < 20", desc: "Relatively healthy, economically stable, and food-accessible compared to the rest of the country." },
+          ].map(({ tier, color, range, desc }) => (
+            <div key={tier} style={{ borderLeft: `3px solid ${color}`, paddingLeft: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontWeight: 700, fontSize: 13, color }}>{tier}</span>
+                <span style={{ fontSize: 11, color: "var(--muted2)" }}>{range}</span>
+              </div>
+              <p className="card-desc" style={{ fontSize: 12 }}>{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ── Map ── */}
       <div className="card">
         <div className="card-header">
