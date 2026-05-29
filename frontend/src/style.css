@@ -460,13 +460,24 @@ body {
 
 /* ── Responsive ──────────────────────────────────── */
 @media (max-width: 900px) {
-  .hero { grid-template-columns: 1fr; }
+  .hero { grid-template-columns: 1fr; gap: 24px; padding: 40px 0 32px; }
   .hero-meta { display: none; }
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero h1 { font-size: 1.8rem; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .two-col, .three-col { grid-template-columns: 1fr; }
+  .page { padding: 0 16px 60px; }
+  .card { padding: 20px; }
+  .kpi-card { padding: 18px; }
+  .kpi-value { font-size: 1.8rem; }
 }
 
 @media (max-width: 600px) {
-  .kpi-grid { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .method-grid { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 1.5rem; }
+  .hero-sub { font-size: 13px; }
+  .data-table { font-size: 11px; }
+  .data-table th, .data-table td { padding: 8px 8px; }
+  .badge { font-size: 10px; padding: 3px 10px; }
+  .skill-tag { font-size: 10px; }
 }
