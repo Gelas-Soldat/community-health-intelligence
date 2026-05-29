@@ -180,11 +180,23 @@ export default function App() {
             a clear, data-driven answer to that question.
           </p>
           <div className="badges">
-            <span className="badge">CDC PLACES 2023</span>
-            <span className="badge">Census ACS 5-Year</span>
-            <span className="badge">USDA Food Access 2019</span>
-            <span className="badge">Live Neon Database</span>
-            <span className="badge">Netlify Functions API</span>
+            {activeTab === "community" ? (
+              <>
+                <span className="badge">CDC PLACES 2023</span>
+                <span className="badge">Census ACS 5-Year</span>
+                <span className="badge">USDA Food Access 2019</span>
+                <span className="badge">3,100+ Counties</span>
+                <span className="badge">Updated Annually</span>
+              </>
+            ) : (
+              <>
+                <span className="badge">CDC PLACES 2023</span>
+                <span className="badge">Census ACS 5-Year</span>
+                <span className="badge">USDA Food Access 2019</span>
+                <span className="badge">Live Neon Database</span>
+                <span className="badge">Netlify Functions API</span>
+              </>
+            )}
           </div>
         </div>
         <div className="hero-meta">
