@@ -14,31 +14,22 @@ exports.handler = async (event) => {
     );
     const year = parseInt(yrRes.rows[0].year);
 
-    // All scoring done in SQL — cast to numeric explicitly to avoid double precision ROUND error
     const sql = `
       WITH
-
-      -- Average health outcome measures per county (higher = worse)
       health_outcome AS (
-        SELECT county_fips,
-          AVG(value)::numeric AS outcome_avg
+        SELECT county_fips, AVG(value)::numeric AS outcome_avg
         FROM fact_health_measures
         WHERE year = ${year}
           AND measure_id IN ('DIABETES','OBESITY','BPHIGH','CHD','COPD','CANCER','CASTHMA','STROKE','MHLTH','PHLTH')
         GROUP BY county_fips
       ),
-
-      -- Average preventive care measures per county (higher = better)
       health_care AS (
-        SELECT county_fips,
-          AVG(value)::numeric AS care_avg
+        SELECT county_fips, AVG(value)::numeric AS care_avg
         FROM fact_health_measures
         WHERE year = ${year}
           AND measure_id IN ('CHECKUP','DENTAL','MAMMOUSE','CERVICAL','CHOLSCREEN')
         GROUP BY county_fips
       ),
-
-      -- Normalize health outcome to 0-100 (higher = worse)
       health_scored AS (
         SELECT h.county_fips,
           CASE WHEN MAX(h.outcome_avg) OVER () = MIN(h.outcome_avg) OVER () THEN 0
@@ -52,31 +43,23 @@ exports.handler = async (event) => {
         FROM health_outcome h
         LEFT JOIN health_care c USING (county_fips)
       ),
-
-      -- Normalize census economic indicators
       econ_scored AS (
         SELECT e.county_fips,
           (
             50::numeric * CASE WHEN MAX(e.poverty_rate) OVER () = MIN(e.poverty_rate) OVER () THEN 0
               ELSE (e.poverty_rate - MIN(e.poverty_rate) OVER ()) / (MAX(e.poverty_rate) OVER () - MIN(e.poverty_rate) OVER ()) END
-            +
-            30::numeric * CASE WHEN MAX(e.uninsured_rate) OVER () = MIN(e.uninsured_rate) OVER () THEN 0
+            + 30::numeric * CASE WHEN MAX(e.uninsured_rate) OVER () = MIN(e.uninsured_rate) OVER () THEN 0
               ELSE (e.uninsured_rate - MIN(e.uninsured_rate) OVER ()) / (MAX(e.uninsured_rate) OVER () - MIN(e.uninsured_rate) OVER ()) END
-            +
-            20::numeric * CASE WHEN MAX(e.median_household_income) OVER () = MIN(e.median_household_income) OVER () THEN 0
+            + 20::numeric * CASE WHEN MAX(e.median_household_income) OVER () = MIN(e.median_household_income) OVER () THEN 0
               ELSE 1 - (e.median_household_income - MIN(e.median_household_income) OVER ()) / (MAX(e.median_household_income) OVER () - MIN(e.median_household_income) OVER ()) END
           ) AS economic_risk_score
-        FROM fact_census_profile e
-        WHERE year = ${year}
+        FROM fact_census_profile e WHERE year = ${year}
       ),
-
-      -- Food access burden per county
       food_raw AS (
         SELECT county_fips,
           SUM(low_income_low_access_population)::numeric
             / NULLIF(SUM(tract_population), 0)::numeric * 100 AS food_pct
-        FROM fact_food_access
-        GROUP BY county_fips
+        FROM fact_food_access GROUP BY county_fips
       ),
       food_scored AS (
         SELECT county_fips,
@@ -86,13 +69,8 @@ exports.handler = async (event) => {
           END AS food_access_burden
         FROM food_raw
       )
-
-      -- Join everything
       SELECT
-        d.county_fips,
-        d.county_name,
-        d.state_abbr,
-        d.state_name,
+        d.county_fips, d.county_name, d.state_abbr, d.state_name,
         COALESCE(hs.health_risk_score,   0)::float AS health_risk_score,
         COALESCE(hs.preventive_care_gap, 0)::float AS preventive_care_gap,
         COALESCE(es.economic_risk_score, 0)::float AS economic_risk_score,
@@ -104,8 +82,8 @@ exports.handler = async (event) => {
     `;
 
     const res = await client.query(sql);
-
     const results = [];
+
     for (const row of res.rows) {
       const h = parseFloat(row.health_risk_score)   || 0;
       const e = parseFloat(row.economic_risk_score) || 0;
@@ -115,7 +93,12 @@ exports.handler = async (event) => {
       if (h === 0 && e === 0 && f === 0) continue;
 
       const priority = Math.round((h * 0.40) + (e * 0.35) + (f * 0.25));
-      const tier = priority >= 75 ? "HIGH" : priority >= 50 ? "ELEVATED" : priority >= 25 ? "MODERATE" : "LOW";
+
+      // Adjusted thresholds based on actual national score distribution
+      const tier = priority >= 50 ? "HIGH"
+                 : priority >= 35 ? "ELEVATED"
+                 : priority >= 20 ? "MODERATE"
+                 : "LOW";
 
       results.push({
         county_fips:         row.county_fips,

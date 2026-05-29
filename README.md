@@ -1,127 +1,217 @@
-# Community Health Access BI Dashboard
+# Community Health Intelligence Dashboard
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-3DA639?style=for-the-badge)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-community--health--intelligence.netlify.app-2563EB?style=for-the-badge)](https://community-health-intelligence.netlify.app)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ryancreates-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/ryancreates)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Gelassoldat-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/gelassoldat)
 
-A business intelligence portfolio project using public CDC, Census, and USDA data to identify counties where health risk, economic vulnerability, and limited food access overlap.
+A full-stack business intelligence project identifying US counties where health risk, economic vulnerability, and food access barriers overlap. Built with CDC, Census, and USDA public data, served via a live Neon PostgreSQL database and Netlify serverless functions.
 
-## Dashboard Preview
+---
+
+## Live Dashboard
+
+**[community-health-intelligence.netlify.app](https://community-health-intelligence.netlify.app)**
+
+- Interactive choropleth map of all 3,100+ US counties
+- Real-time scores computed from a live cloud database
+- Year selector, metric switcher, hover tooltips
+- Top 10 county rankings with full KPI breakdown
+
+---
+
+## Screenshots
 
 ### Full Dashboard
-
 ![Dashboard Overview](docs/screenshots/dashboard-overview.png)
 
-### KPI and Analytics View
+### County Risk Map
+![Map View](docs/screenshots/kpi-and-charts.png)
 
-![KPI Charts](docs/screenshots/kpi-and-charts.png)
-
-### SQL Techniques Section
-
-![SQL Section](docs/screenshots/sql-techniques.png)
+---
 
 ## Business Problem
 
-Public agencies, nonprofit health networks, and community planning teams often need to decide where limited outreach dollars should go first. The issue is not just one metric. A county may have high diabetes risk, high poverty, limited preventive care, and poor food access at the same time.
+Public health agencies often work with fragmented datasets and limited outreach budgets. A county may have high chronic disease rates, extreme poverty, and poor food access — but no single tool captures all three at once.
 
-This project answers a practical BI question:
+This dashboard answers one practical question: **Which counties should be prioritized for public health outreach based on combined health, economic, and food access risk?**
 
-> Which counties should be prioritized for public health outreach based on combined health, economic, and food access risk?
-
-## Target Users
-
-|User|Decision They Need To Make|
-|-|-|
-|Public health program manager|Which counties need intervention first?|
-|Grant analyst|Where should funding be directed?|
-|Community outreach team|Which locations need screenings or education campaigns?|
-|Executive stakeholder|What are the top risk areas and why?|
-
-## Use Case
-
-The dashboard gives stakeholders a ranked view of counties by priority score, with drilldowns into health outcomes, poverty, uninsured rates, and food access pressure. The goal is not to diagnose individuals. The goal is to support resource allocation and planning.
+---
 
 ## Data Sources
 
-|Source|Dataset|Purpose|
-|-|-|-|
-|CDC|PLACES County Data|County health outcomes, behaviors, and preventive care|
-|Census Bureau|ACS 5 Year Data|Population, poverty, income, insurance, demographics|
-|USDA ERS|Food Access Research Atlas|Low income and low access food indicators|
+| Source | Dataset | Coverage | Purpose |
+|---|---|---|---|
+| CDC | PLACES County Data 2023 | 3,145 counties | Chronic disease outcomes and preventive care rates |
+| Census Bureau | ACS 5-Year Estimates 2023 | 3,144 counties | Poverty, uninsured rate, median income |
+| USDA ERS | Food Access Research Atlas 2019 | 72,531 census tracts | Low income + low access population share |
 
-## Key Business Questions
+---
 
-1. Which counties have the highest combined public health risk?
-2. Where do high chronic disease indicators overlap with poverty?
-3. Which counties have poor preventive care access compared with peers?
-4. Are some counties high risk because of health outcomes, economic pressure, food access, or all three?
-5. Which counties should be prioritized for outreach campaigns?
+## Scoring Model
 
-## KPIs
+Priority Score = **40% Health Risk + 35% Economic Vulnerability + 25% Food Access Burden**
 
-|KPI|Description|
-|-|-|
-|Priority Score|Composite ranking metric combining health, economic, and food access risk|
-|Health Risk Score|Average standardized risk across selected CDC health measures|
-|Economic Risk Score|Poverty, uninsured rate, and income pressure indicators|
-|Food Access Burden|Percent of population in low income, low access areas|
-|Preventive Care Gap|Preventive care measures that fall below benchmark|
-|State Risk Rank|County rank inside each state using window functions|
+Each dimension is min-max normalized to 0–100 across all counties using PostgreSQL window functions, then weighted into a composite priority score.
 
-## Technical Skills Demonstrated
+| Tier | Score | Description |
+|---|---|---|
+| HIGH | ≥ 50 | Immediate intervention priority |
+| ELEVATED | ≥ 35 | Strong candidate for outreach |
+| MODERATE | ≥ 20 | Monitor and assess |
+| LOW | < 20 | Below average combined risk |
 
-* PostgreSQL schema design
-* Relational modeling
-* Data cleaning and transformation
-* Joins across multiple public datasets
-* CTEs and layered SQL logic
-* Window functions for county ranking
-* Subqueries for benchmark comparisons
-* Views and materialized views for dashboard use
-* Indexing and performance optimization
-* BI storytelling and KPI design
-* Frontend dashboard deployment with Netlify
+### Health Risk Measures (CDC PLACES)
+Diabetes · Obesity · Hypertension · Coronary Heart Disease · COPD · Cancer · Asthma · Stroke · Poor Mental Health · Poor Physical Health
 
-## Suggested Build Path
+### Preventive Care Gap (CDC PLACES, inverted)
+Annual Checkup · Dental Visit · Mammography · Cervical Screening · Cholesterol Screening
 
-Start with 5 states to keep the first version clean: Tennessee, Texas, Florida, California, and New York. Expand nationally after the schema, queries, and dashboard are working.
+### Economic Vulnerability (Census ACS)
+Poverty Rate (50%) · Uninsured Rate (30%) · Median Household Income, inverted (20%)
+
+### Food Access Burden (USDA)
+Low income + low access population as share of county population
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Database | PostgreSQL 17 on Neon (serverless) |
+| ETL | Python — pandas, psycopg2, requests, tenacity |
+| API | Netlify Functions (Node.js + pg) |
+| Frontend | React + Vite |
+| Map | Leaflet + react-leaflet |
+| Charts | Recharts |
+| Deployment | Netlify (CD from GitHub) |
+
+---
 
 ## Project Structure
 
-```txt
-community-health-access-bi/
-  README.md
-  database/
-    schema.sql
-    indexes.sql
-    views.sql
-    stored\_procedures.sql
-  etl/
-    load\_cdc\_places.py
-    load\_census\_acs.py
-    load\_food\_access.py
-    clean\_transform.py
-  sql/
-    beginner\_queries.sql
-    intermediate\_queries.sql
-    advanced\_queries.sql
-    performance\_tuning.sql
-  frontend/
-    src/
-      App.jsx
-      main.jsx
-      data.js
-    package.json
-    index.html
-  docs/
-    data\_dictionary.md
-    project\_plan.md
-    interview\_talking\_points.md
-  data/
-    raw/
-    processed/
+```
+community-health-intelligence/
+├── database/
+│   ├── schema.sql                    # Core table definitions
+│   ├── indexes.sql                   # Performance indexes
+│   ├── views.sql                     # Reporting views
+│   ├── stored_procedures.sql         # Scoring procedures
+│   └── migrations/
+│       └── 001_add_time_series.sql   # Time-series support, trend views
+├── etl/
+│   ├── run_pipeline.py               # National ETL orchestrator (all 50 states)
+│   ├── load_cdc_places.py            # CDC PLACES loader
+│   ├── load_census_acs.py            # Census ACS loader
+│   ├── load_food_access.py           # USDA Food Access loader
+│   └── clean_transform.py            # Data cleaning utilities
+├── netlify/
+│   └── functions/
+│       ├── scores.js                 # County scores API endpoint
+│       └── years.js                  # Available years endpoint
+├── frontend/
+│   └── src/
+│       ├── App.jsx                   # Main dashboard
+│       ├── data.js                   # API fetch layer
+│       ├── style.css                 # Dashboard styles
+│       └── components/
+│           └── CountyMap.jsx         # Leaflet choropleth map
+├── sql/
+│   ├── beginner_queries.sql
+│   ├── intermediate_queries.sql
+│   ├── advanced_queries.sql
+│   └── performance_tuning.sql
+└── docs/
+    ├── INTEGRATION.md                # Step-by-step setup guide
+    ├── data_dictionary.md
+    └── interview_talking_points.md
 ```
 
-## Portfolio Summary
+---
 
-Community Health Access BI Dashboard is a real world analyst project that combines CDC health estimates, Census socioeconomic indicators, and USDA food access data to identify counties with the greatest need for public health outreach. The project demonstrates practical SQL, BI thinking, stakeholder focused KPI design, relational modeling, data cleaning, and dashboard development.
+## Running the ETL Pipeline
+
+### Prerequisites
+- Python 3.10+
+- PostgreSQL 17 client (`psql`)
+- Neon account (or any PostgreSQL instance)
+- Census API key: [api.census.gov/data/key_signup.html](https://api.census.gov/data/key_signup.html)
+
+### Setup
+
+```bash
+pip install pandas psycopg2-binary requests python-dotenv tqdm tenacity openpyxl
+```
+
+Create `.env` in repo root:
+```
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
+DB_HOST=your-host
+DB_PORT=5432
+DB_NAME=your-db
+DB_USER=your-user
+DB_PASSWORD=your-password
+CENSUS_API_KEY=your-key
+```
+
+Run schema migrations:
+```bash
+psql "$DATABASE_URL" -f database/schema.sql
+psql "$DATABASE_URL" -f database/migrations/001_add_time_series.sql
+```
+
+Download USDA Food Access Atlas (2019) and save to `data/raw/food_access_atlas_2019.xlsx`:
+[ers.usda.gov/data-products/food-access-research-atlas](https://www.ers.usda.gov/data-products/food-access-research-atlas/download-the-data/)
+
+Run the pipeline:
+```bash
+# Test with a few states first
+python etl/run_pipeline.py --year 2023 --states TN TX FL
+
+# Full national load
+python etl/run_pipeline.py --year 2023
+```
+
+The pipeline is resumable — if interrupted, re-run the same command and it skips already-loaded states.
+
+---
+
+## SQL Techniques Demonstrated
+
+- Multi-source joins across CDC, Census, and USDA datasets
+- Window functions for national and state-level ranking
+- CTEs with layered normalization logic
+- Min-max scoring with NULL-safe division
+- Materialized views for dashboard performance
+- Stored procedures for annual score refresh
+- Indexing strategy for county + year composite keys
+- Time-series schema supporting multi-year trend analysis
+
+---
+
+## API Endpoints
+
+Served via Netlify Functions:
+
+| Endpoint | Description |
+|---|---|
+| `GET /.netlify/functions/scores` | All county scores (latest year) |
+| `GET /.netlify/functions/scores?year=2023` | County scores for a specific year |
+| `GET /.netlify/functions/years` | Available data years |
+
+---
+
+## Target Users
+
+| User | Decision |
+|---|---|
+| Public health program manager | Which counties need intervention first? |
+| Grant analyst | Where should funding be directed? |
+| Community outreach team | Which locations need screenings or campaigns? |
+| Executive stakeholder | What are the top risk areas and why? |
+
+---
+
+## About
+
+Built by Ryan as a Business Intelligence portfolio project demonstrating SQL analytics, KPI modeling, ETL pipeline development, and full-stack dashboard deployment with live public health data.
